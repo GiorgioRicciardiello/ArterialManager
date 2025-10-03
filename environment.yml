@@ -1,0 +1,29 @@
+name: arterial_manager_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core
+  - python=3.10
+  - pandas
+  - numpy
+  - openpyxl         # Excel reader/writer
+  - xlsxwriter       # Excel writer for formatting
+  - regex            # for your filename parsing
+
+  # Streamlit App
+  - streamlit
+
+  # Optional (if using tkinter desktop GUI)
+  - tk
+
+  # Dev / Utilities
+  - ipykernel
+  - jupyter
+  - pip
+
+  # If you need pip-only packages
+  - pip:
+      # e.g., pycwa or other libraries not in conda
+       - pycwa
+       - seaborn
