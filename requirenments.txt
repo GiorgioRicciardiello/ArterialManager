@@ -1,0 +1,33 @@
+# Core
+pandas
+numpy
+scipy
+regex
+
+# Excel I/O
+openpyxl
+XlsxWriter
+
+# Visualization
+matplotlib
+seaborn
+plotly
+streamlit
+
+# Image processing
+opencv-python
+scikit-image
+PyWavelets
+Pillow
+
+# Parallelization & utilities
+joblib
+tqdm
+PyYAML
+
+# Optional GUI
+tk
+
+# Pip-only extras
+pycwa
+gdown

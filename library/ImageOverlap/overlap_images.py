@@ -150,28 +150,48 @@ def process_folder(folder_cell:pathlib.Path, path_out:pathlib.Path):
                 print(f"⚠️ Error in {cell_id}: {e}")
     return results
 
-if __name__ == "__main__":
-    # %% Define input and output path
-    base_path =  CONFIG["paths"]['data'].joinpath('imgs')  # folder with all AD1_* images
-    path_out = CONFIG['paths']['outputs_imgs'].joinpath('overlap_images')
+
+def run_batch_overlap(base_path: pathlib.Path, path_out: pathlib.Path, n_jobs: int = 8):
+    """
+    Run batch colocalization for all folders inside base_path.
+
+    Parameters
+    ----------
+    base_path : Path
+        Root folder containing all subfolders with paired images (C=0, C=1).
+    path_out : Path
+        Output folder where results will be stored.
+    n_jobs : int
+        Number of parallel workers (joblib).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with metrics for all processed cells.
+    """
     path_out.mkdir(parents=True, exist_ok=True)
-
-    # %% Get all the folders in the base path
+    # Get all the folders in the base path
     all_folders = [p for p in base_path.rglob("*") if p.is_dir()]
-
-    # %% Parallel processing of the different images
-    all_results = Parallel(n_jobs=8)(
+    # Parallel processing of the different images
+    all_results = Parallel(n_jobs=n_jobs)(
         delayed(process_folder)(folder_cell, path_out)
         for folder_cell in tqdm(all_folders, desc="Processing folders")
     )
 
-    # %% collect results and save
-    # Flatten results list
     flat_results = [row for sublist in all_results for row in sublist]
-
-    # Save all metrics in one big table
-    # save as DataFrame
     df_all = pd.DataFrame(flat_results)
+
+    # Save results
     df_all.to_csv(path_out / "all_metrics_with_paths.csv", index=False)
+    print(f"✅ Saved metrics to {path_out / 'all_metrics_with_paths.csv'}")
+
+    return df_all
+
+
+if __name__ == "__main__":
+    # %% Define input and output path
+    base_path = CONFIG["paths"]['data'].joinpath('imgs')
+    path_out = CONFIG['paths']['outputs_imgs'].joinpath('overlap_images')
+    run_batch_overlap(base_path, path_out, n_jobs=8)
 
 

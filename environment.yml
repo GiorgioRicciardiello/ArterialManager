@@ -7,23 +7,37 @@ dependencies:
   - python=3.10
   - pandas
   - numpy
-  - openpyxl         # Excel reader/writer
-  - xlsxwriter       # Excel writer for formatting
-  - regex            # for your filename parsing
+  - openpyxl          # Excel reader/writer
+  - xlsxwriter        # Excel writer for formatting
+  - regex             # filename parsing / cleanup
+  - scipy             # core scientific computing
 
-  # Streamlit App
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
   - streamlit
 
-  # Optional (if using tkinter desktop GUI)
+  # Image processing
+  - opencv
+  - scikit-image
+  - pywavelets        # wavelet decomposition
+  - pillow
+
+  # Parallelization & utilities
+  - joblib
+  - tqdm
+  - pyyaml
+
+  # GUI (optional)
   - tk
 
-  # Dev / Utilities
+  # Dev / Notebook support
   - ipykernel
   - jupyter
   - pip
 
-  # If you need pip-only packages
+  # Pip-only packages
   - pip:
-      # e.g., pycwa or other libraries not in conda
-       - pycwa
-       - seaborn
+      - pycwa         # if you rely on this
+      - gdown         # download files from Google Drive

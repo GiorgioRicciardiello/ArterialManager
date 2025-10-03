@@ -74,6 +74,7 @@ Notes
   hypotheses (strict product, permissive min, balanced geo_mean, correlation-weighted).
 - Visualization overlays highlight overlap in **yellow/gold** for interpretability.
 
+https://github.com/NienhausLabKIT/HuepfelM/blob/master/WBNS/python_script/WBNS.py
 """
 
 import pathlib
