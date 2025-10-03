@@ -25,8 +25,8 @@ echo "CPUs: $LSB_DJOB_NUMPROC"
 # -------------------------------
 # Paths
 # -------------------------------
-BASE_PATH=/sc/arion/work/riccig01/vascular_images/FINAL/Colored/Same_contrast
-OUT_PATH=/sc/arion/work/riccig01/vascular_images/FINAL/Colored/processed_overlap
+BASE_PATH=/sc/arion/projects/vascbrain/giocrm/VascularImages/SameContrast
+OUT_PATH=/sc/arion/projects/vascbrain/giocrm/VascularImages/processed_overlap
 
 # Make sure output dir exists
 mkdir -p $OUT_PATH
