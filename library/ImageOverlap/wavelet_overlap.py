@@ -658,9 +658,9 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
     if show:
         plt.show()
 
-    if output_path:
+    if path_output:
         # save the best image
-        fig = plt.figure(num=None, figsize=(8, 6), dpi=100, facecolor='w', edgecolor='k')
+        fig = plt.figure(num=None, figsize=(8, 6), dpi=300, facecolor='w', edgecolor='k')
         ax = fig.add_subplot(111)
         ax.imshow(np.zeros_like(green_u8), cmap="gray", vmin=0, vmax=1)  # gray black canvas
         g_boost = np.clip(_normalize01(green_u8) * 1.2, 0, 1)  # scale and cli
@@ -671,6 +671,21 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
         plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red'), bbox_inches="tight", pad_inches=0, dpi=300)
         plt.show()
         plt.close()
+
+        fig = plt.figure(num=None, figsize=(8, 6), dpi=300, facecolor='w', edgecolor='k')
+        ax = fig.add_subplot(111)
+        ax.imshow(img_green_color, alpha=0.9)
+        edges_rgba = _edges_to_rgba(g_edges, hex_color="#FF00FF", alpha=0.8)
+        ax.imshow(edges_rgba)
+        ax.imshow(heatmap_binary_gold_rgba)
+        ax.axis("off")
+        ax.set_title("Overlap Binary", fontsize=12)
+        plt.tight_layout()
+        plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red_binary'), bbox_inches="tight", pad_inches=0, dpi=300)
+        plt.show()
+        plt.close()
+
+
 
 
     return metrics, components

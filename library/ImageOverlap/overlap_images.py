@@ -140,7 +140,8 @@ def process_folder(folder_cell:pathlib.Path, path_out:pathlib.Path):
                 # Merge metadata with metrics into one dict
                 result_row = {
                     "cell_id": cell_id,
-                    "folder": str(folder_cell),
+                    "folder": str(folder_cell.stem),
+                    "path": str(folder_cell),
                     "path_green": str(path_green),
                     "path_red": str(path_red),
                     **metrics
@@ -186,6 +187,57 @@ def run_batch_overlap(base_path: pathlib.Path, path_out: pathlib.Path, n_jobs: i
     print(f"✅ Saved metrics to {path_out / 'all_metrics_with_paths.csv'}")
 
     return df_all
+
+
+def run_batch_overlap_skip(base_path: Path, path_out: Path, n_jobs: int = 8):
+    """
+    Run batch colocalization but skip folders already processed.
+
+    Parameters
+    ----------
+    base_path : Path
+        Root folder containing all subfolders with paired images (C=0, C=1).
+    path_out : Path
+        Output folder where results will be stored.
+    n_jobs : int
+        Number of parallel workers (joblib).
+    """
+    path_out.mkdir(parents=True, exist_ok=True)
+
+    # All candidate folders only top-level folders
+    all_folders = [p for p in base_path.glob("*") if p.is_dir()]
+
+    # Skip ones already processed in path_out
+    to_process = []
+    for folder in all_folders:
+        out_folder = path_out / folder.stem
+        if out_folder.exists():
+            print(f"⏭️ Skipping {folder.stem} (already processed).")
+        else:
+            to_process.append(folder)
+
+    print(f"📂 Found {len(all_folders)} folders, processing {len(to_process)} new ones.")
+
+    # Parallel processing
+    all_results = Parallel(n_jobs=n_jobs)(
+        delayed(process_folder)(folder_cell, path_out)
+        for folder_cell in tqdm(to_process, desc="Processing new folders")
+    )
+
+    flat_results = [row for sublist in all_results for row in sublist]
+    if flat_results:
+        df_all = pd.DataFrame(flat_results)
+        # Append or save results
+        csv_path = path_out / "all_metrics_with_paths.csv"
+        if csv_path.exists():
+            df_all.to_csv(csv_path, mode="a", index=False, header=False)  # append
+        else:
+            df_all.to_csv(csv_path, index=False)
+        print(f"✅ Updated metrics at {csv_path}")
+        return df_all
+    else:
+        print("⚠️ No new folders processed.")
+        return pd.DataFrame()
 
 
 if __name__ == "__main__":
