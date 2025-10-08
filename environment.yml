@@ -21,7 +21,7 @@ dependencies:
   # Image processing
   - opencv
   - scikit-image
-  - pywavelets        # wavelet decomposition
+  - PyWavelets        # wavelet decomposition
   - pillow
 
   # Parallelization & utilities

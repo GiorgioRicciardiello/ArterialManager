@@ -82,39 +82,114 @@ from joblib import Parallel, delayed
 from library.ImageOverlap.wavelet_overlap import coloc_vessels_with_wbns
 
 
+def find_pairs_in_folder(folder_cell: pathlib.Path, path_out: pathlib.Path) -> Dict[str, Dict[str, pathlib.Path]]:
+    """
+    Identify valid image pairs (C=0 and C=1) in a folder and log issues as structured CSVs.
 
-def find_pairs_in_folder(folder_cell:pathlib.Path) -> Dict[str, List[Tuple[int, int]]]:
+    :param folder_cell: Path to the folder containing the cell images (e.g., AD1 - NPBB20)
+    :param path_out: Path to the output folder where logs will be saved
+    :return: Dictionary of valid image pairs
     """
 
-    :param folder_cell: Path to the folder containing the cell images e.g., : AD1 - NPBB20
-    :return: Dictionary of cell image pairs, green and red stain for each
-    """
+    def _remove_types(folder_cell: pathlib.Path):
+        """
+        Rename image files in the folder to fix malformed channel tags like '_ C=' → '_C='.
+
+        :param folder_cell: Path to the folder containing image files
+        """
+        renamed_files = []
+        for img in folder_cell.glob("*.jpg"):
+            if "_ C=" in img.name:
+                corrected_name = img.name.replace("_ C=", "_C=")
+                new_path = img.with_name(corrected_name)
+
+                try:
+                    img.rename(new_path)
+                    renamed_files.append({
+                        "folder": folder_cell.stem,
+                        "original_name": img.name,
+                        "new_name": corrected_name
+                    })
+                    print(f"✅ Renamed: {img.name} → {corrected_name}")
+                except Exception as e:
+                    print(f"⚠️ Failed to rename {img.name}: {e}")
+        return renamed_files
+
+    # create the logs output
+    path_out_logs = path_out.joinpath('logs_pairs')
+    # for each folder cell have a cell folder, we mkdir only if there are logs to create
+    path_out_logs = path_out_logs.joinpath(folder_cell.stem)
+
+    renamed_files = _remove_types(folder_cell)
+
+
     all_imgs = [
         p for p in folder_cell.glob("*.jpg")
         if "MERGE" not in p.name and "jpgscale" not in p.name
     ]
-    print(f'Found {len(all_imgs)} images in {folder_cell.stem}')
+    print(f'🔍 Found {len(all_imgs)} images in {folder_cell.stem}')
 
-    # group images by "cell id" (everything before `_C=`)
     pairs = {}
+    error_imgs = []
+    incomplete = []
+
     for img in all_imgs:
-        base_name = img.stem.split("_C=")[0]  # e.g., AD1_1
-        channel = img.stem.split("_C=")[1]  # "0" or "1"
-        pairs.setdefault(base_name, {})[channel] = img
+        try:
+            base_name = img.stem.split("_C=")[0]
+            channel = img.stem.split("_C=")[1]
+            pairs.setdefault(base_name, {})[channel] = img
+        except Exception as e:
+            error_imgs.append({
+                "folder": folder_cell.stem,
+                "filename": img.name,
+                "issue": "malformed filename",
+                "error_message": str(e)
+            })
+            print(f"⚠️ Skipping malformed filename: {img.name} → {e}")
 
-    # 🔍 Assert each has both channels (0 and 1)
+    valid_pairs = {}
     for name, chans in pairs.items():
-        assert set(chans.keys()) == {"0", "1"}, f"Missing channel in {name}: found {list(chans.keys())}"
+        if set(chans.keys()) == {"0", "1"}:
+            valid_pairs[name] = chans
+        else:
+            incomplete.append({
+                "folder": folder_cell.stem,
+                "cell_id": name,
+                "found_channels": list(chans.keys())
+            })
 
-    print(f'The following vessels stains with green (C=0)  and red (C=1) pairs were found ({len(pairs)}): \n\t{pairs.keys()}')
-    return pairs
+    # Save logs only if there are entries
+    if any([renamed_files, error_imgs, incomplete]):
+        path_out_logs.mkdir(parents=True, exist_ok=True)
+
+    # Save logs as structured CSVs
+    if renamed_files:
+        df_renamed = pd.DataFrame(renamed_files)
+        df_renamed.to_csv(path_out_logs / "renamed_files.csv", index=False)
+        print(f"📝 Logged {len(df_renamed)} renamed files to renamed_files.csv")
+
+    if error_imgs:
+        # folder logs for the cell is created, only if there are files to log
+        df_errors = pd.DataFrame(error_imgs)
+        df_errors.to_csv(path_out_logs / "malformed_filenames.csv", index=False)
+        print(f"⚠️ Logged {len(df_errors)} malformed filenames to malformed_filenames.csv")
+
+    if incomplete:
+        # folder logs for the cell is created, only if there are files to log
+        df_incomplete = pd.DataFrame(incomplete)
+        df_incomplete.to_csv(path_out_logs / "missing_pairs.csv", index=False)
+        print(f"⚠️ Logged {len(df_incomplete)} incomplete pairs to missing_pairs.csv")
+
+    print(f'✅ Found {len(valid_pairs)} complete pairs in {folder_cell.stem}')
+    return valid_pairs
 
 
 def process_folder(folder_cell:pathlib.Path, path_out:pathlib.Path):
     """Process all pairs inside a folder_cell."""
-    pairs = find_pairs_in_folder(folder_cell=folder_cell)
-    results = []
+    pairs = find_pairs_in_folder(folder_cell=folder_cell, path_out=path_out)
 
+    results = []
+    error_logs = []
     # tqdm inside each folder (progress per cell)
     for cell_id, channels in tqdm(pairs.items(), desc=f"{folder_cell.stem}", leave=False):
         if "0" in channels and "1" in channels:
@@ -149,6 +224,32 @@ def process_folder(folder_cell:pathlib.Path, path_out:pathlib.Path):
                 results.append(result_row)
             except Exception as e:
                 print(f"⚠️ Error in {cell_id}: {e}")
+                error_logs.append({
+                    "folder": folder_cell.stem,
+                    "cell_id": cell_id,
+                    "path_green": str(path_green),
+                    "path_red": str(path_red),
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                })
+
+    # Save errors if any occurred
+    if error_logs:
+        # create directory
+        path_out_logs = path_out / folder_cell.stem / 'logs_img_processing'
+        path_out_logs.mkdir(parents=True, exist_ok=True)
+        error_log_path = path_out_logs / "processing_errors.csv"
+        # log the errors
+        df_errors = pd.DataFrame(error_logs)
+        # Append or create new CSV
+        if error_log_path.exists():
+            df_errors.to_csv(error_log_path, mode="a", index=False, header=False)
+        else:
+            df_errors.to_csv(error_log_path, index=False)
+
+        print(f"📝 Logged {len(df_errors)} processing errors to {error_log_path}")
+
+
     return results
 
 
@@ -172,7 +273,7 @@ def run_batch_overlap(base_path: pathlib.Path, path_out: pathlib.Path, n_jobs: i
     """
     path_out.mkdir(parents=True, exist_ok=True)
     # Get all the folders in the base path
-    all_folders = [p for p in base_path.rglob("*") if p.is_dir()]
+    all_folders = [p for p in base_path.iterdir() if p.is_dir()]
     # Parallel processing of the different images
     all_results = Parallel(n_jobs=n_jobs)(
         delayed(process_folder)(folder_cell, path_out)
@@ -240,10 +341,49 @@ def run_batch_overlap_skip(base_path: Path, path_out: Path, n_jobs: int = 8):
         return pd.DataFrame()
 
 
+def run_batch_overlap_skip_no_parallel(base_path: Path, path_out: Path):
+    """
+    Sequential version of run_batch_overlap_skip — skips already processed folders.
+    """
+    path_out.mkdir(parents=True, exist_ok=True)
+
+    all_folders = [p for p in base_path.glob("*") if p.is_dir()]
+
+    to_process = []
+    for folder in all_folders:
+        out_folder = path_out / folder.stem
+        if out_folder.exists():
+            print(f"⏭️ Skipping {folder.stem} (already processed).")
+        else:
+            to_process.append(folder)
+
+    print(f"📂 Found {len(all_folders)} folders, processing {len(to_process)} new ones (sequential).")
+
+    all_results = []
+    for folder_cell in tqdm(to_process, desc="Processing new folders sequentially"):
+        results = process_folder(folder_cell, path_out)
+        all_results.extend(results)
+
+    if all_results:
+        df_all = pd.DataFrame(all_results)
+        csv_path = path_out / "all_metrics_with_paths.csv"
+        if csv_path.exists():
+            df_all.to_csv(csv_path, mode="a", index=False, header=False)
+        else:
+            df_all.to_csv(csv_path, index=False)
+        print(f"✅ Updated metrics at {csv_path}")
+        return df_all
+    else:
+        print("⚠️ No new folders processed.")
+        return pd.DataFrame()
+
 if __name__ == "__main__":
     # %% Define input and output path
     base_path = CONFIG["paths"]['data'].joinpath('imgs')
     path_out = CONFIG['paths']['outputs_imgs'].joinpath('overlap_images')
-    run_batch_overlap(base_path, path_out, n_jobs=8)
+    # if parallel processing:
+    # run_batch_overlap(base_path, path_out, n_jobs=8)
+    # if sequential processing:
+    run_batch_overlap_skip_no_parallel(base_path, path_out)
 
 

@@ -53,6 +53,7 @@ Notes
 from library.ImageOverlap.overlap_images import run_batch_overlap_skip
 from pathlib import Path
 import string
+import socket
 
 def find_base_folder(relative_path:Path) -> Path:
     """
@@ -67,29 +68,35 @@ def find_base_folder(relative_path:Path) -> Path:
     raise FileNotFoundError(f"Could not find {relative_path} on any drive.")
 
 
+
+def is_minerva():
+    hostname = socket.gethostname()
+    if hostname == 'li04e04':
+        return True
+
+    if  Path.cwd().parents[-2] == '/sc':
+        return True
+
+    else:
+        return False
+
+
 if __name__ == "__main__":
     # 🔍 Dataset location (relative path inside the drive)
-    relative_path = Path("Vascular images/FINAL/Colored/Same contrast")
+    if is_minerva():
+        # 🧠 Minerva setup
+        path_input = Path('/sc/arion/projects/vascbrain/giocrm/VascularImages/SameContrast')
+        n_jobs = 2
+    else:
+        # Local setup: If reading directly the hard drive
+        relative_path = Path("Vascular images/FINAL/Colored/Same contrast")
+        path_input = find_base_folder(relative_path)
+        assert path_input.exists(), f"Path not found: {path_input}"
+        n_jobs = 8
 
-    # Locate the dataset folder automatically
-    path_input = find_base_folder(relative_path)
-    assert path_input.exists(), f"Path not found: {path_input}"
-
-    # Output goes into the same drive, under "processed_overlap"
-    path_out = path_input.parent.joinpath("processed_overlap")
-    path_out.mkdir(parents=True, exist_ok=True)
-
-    # 🚀 Run colocalization in parallel
-    run_batch_overlap_skip(base_path=path_input,
-                           path_out=path_out,
-                           n_jobs=8)
-
-    # %% Running on Minerva
-    path_input = Path(r'/sc/arion/projects/vascbrain/giocrm/VascularImages/SameContrast')
     path_out = path_input.parent.joinpath("processed_overlap")
     path_out.mkdir(parents=True, exist_ok=True)
 
     run_batch_overlap_skip(base_path=path_input,
                            path_out=path_out,
-                           n_jobs=2)  # for minerva, 2 folders are processed at the same time within the .sh job
-
+                           n_jobs=n_jobs)

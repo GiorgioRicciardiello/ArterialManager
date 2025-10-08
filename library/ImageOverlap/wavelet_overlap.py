@@ -642,7 +642,7 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
         plt.tight_layout()
 
     if path_output:
-        plt.savefig(path_output.joinpath(f'{cell_id}_gird_images'), bbox_inches="tight", pad_inches=0, dpi=300)
+        plt.savefig(path_output.joinpath(f'{cell_id}_gird_images.png'), bbox_inches="tight", pad_inches=0, dpi=300)
 
         # save the plots as separate images
         titles = [
@@ -668,7 +668,7 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
         ax.imshow(_normalize01(red_u8), cmap="Reds", alpha=0.6)
         ax.axis("off")
         plt.tight_layout()
-        plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red'), bbox_inches="tight", pad_inches=0, dpi=300)
+        plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red.png'), bbox_inches="tight", pad_inches=0, dpi=300)
         plt.show()
         plt.close()
 
@@ -681,11 +681,8 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
         ax.axis("off")
         ax.set_title("Overlap Binary", fontsize=12)
         plt.tight_layout()
-        plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red_binary'), bbox_inches="tight", pad_inches=0, dpi=300)
+        plt.savefig(path_output.joinpath(f'{cell_id}_overlay_green_red_binary.png'), bbox_inches="tight", pad_inches=0, dpi=300)
         plt.show()
         plt.close()
-
-
-
 
     return metrics, components
