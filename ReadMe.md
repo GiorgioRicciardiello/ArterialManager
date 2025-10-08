@@ -1,13 +1,13 @@
 # ArterialManager
 
 📊 **ArterialManager** is a Python-based toolkit for **angiogenesis research data processing**.
-It includes two complementary pipelines:
+It includes three complementary pipelines:
 
 1. **Table Manager** → merges, normalizes, and formats **Angiotool**, **Cell Count**, and **Sample** Excel files into a clean master dataset.
 2. **Streamlit Visualizer** → Uses the results from 'Table Manager' and generates a plot for visualization 
 3. **Vessel Overlap Analysis** → performs **intensity-weighted and binary colocalization analysis** of red and green vessel networks from microscopy images.
 
-Both pipelines can be run via scripts, Streamlit apps, or Colab notebooks.
+All pipelines can be run via scripts with Streamlit apps and Minerva Super Computer
 
 ---
 
@@ -56,17 +56,20 @@ ArterialManager/
 │   ├── TableCreator/
 │   │   └── generate_tab_dataset.py   # Core table pipeline
 │   └── ImageOverlap/
+│       └── overlap_images.py        # entry point of the library, wrapper functions
 │       └── wavelet_overlap.py        # Vessel overlap analysis
 ├── src/
 │   ├── app_streamlit.py          # Streamlit app for table pipeline
 │   ├── app_plot.py               # Streamlit app for interactive plots
 │   └── run_overlap.py            # CLI script for vessel overlap analysis
+│   └── download_from_drive.py    # download images from google drive private to local computer 
 ├── data/
 │   ├── tables/                   # Input Excel tables
 │   └── imgs/                     # Input microscopy images (C=0 green, C=1 red)
 ├── results/
 │   ├── master_table/             # Processed tables
 │   └── overlap_images/           # Processed overlays + metrics
+├── compute_vessel_overlap.yml    # Call to comptue the image overlap code
 ├── environment.yml               # Conda environment definition
 └── README.md                     # Project documentation
 ```
@@ -91,9 +94,17 @@ ArterialManager/
 
 ---
 
-## ▶️ Usage
 
-### 1. Run the Table Manager (Excel processing)
+## 1. Run the Table Manager (Excel processing) ▶️ 
+<p align="center">
+  <img src="results/static/table_manager.png" alt="Table Manager" width="500"/>
+</p>
+
+**Output example**: 
+```
+<StudyName> Angiotools Formated <timestamp>.xlsx
+```
+
 
 **Streamlit Web App**:
 
@@ -112,13 +123,48 @@ Outputs: `results/master_table/`
 
 ---
 
-### 2. Run the Vessel Overlap Analysis
-
-**Python script (local or Colab):**
+## 2. Run the Table Visualizer  ▶️ 
+<p align="center">
+  <img src="results/static/table_visualizer.png" alt="Table Visualizer" width="900"/>
+</p>
+**Streamlit Web App Visualizer**:
 
 ```bash
-python src/run_overlap.py --input ./data/imgs --output ./results/overlap_images
+streamlit run src/app_plot.py
 ```
+
+**Tkinter Desktop App**:
+
+```bash
+python src/app_tkinter.py
+```
+
+Inputs: `data/tables/`
+Outputs: `results/master_table/`
+
+---
+
+## 3. Run the Vessel Overlap Analysis  ▶️
+<p align="center">
+  <img src="results/static/grid_image.png" alt="Grid Image " width="900"/>
+</p>
+
+* RGB overlays (green + red + yellow highlights)
+* Heatmaps of intensity overlap
+* Binary overlap masks
+* Metrics (Manders, Pearson, Dice, Jaccard)
+
+**Python script (local):**
+
+```bash
+bsub < minerva/run_compute_vessel_overlap.sh
+```
+
+**Python script (Minerva):**
+```bash
+python compute_vessel_overlap.py
+```
+
 
 * Input images must follow the convention:
 
@@ -126,41 +172,6 @@ python src/run_overlap.py --input ./data/imgs --output ./results/overlap_images
   * `*_C=1.jpg` → red channel
   * Excludes `MERGE` and `jpgscale` files
 
-* Outputs:
-
-  * Per-cell subfolders with overlays (`.png`)
-  * Metrics saved as `<cell_id>_metrics.xlsx`
-  * Combined summary table: `all_metrics.csv`
-
-**Colab (recommended for Google Drive datasets):**
-
-```python
-!git clone https://github.com/you/ArterialManager.git
-%cd ArterialManager
-from google.colab import drive
-drive.mount('/content/drive')
-
-!python src/run_overlap.py --input /content/drive/MyDrive/YourImages --output /content/drive/MyDrive/Results
-```
-
----
-
-## 📊 Output Examples
-
-### Table Manager:
-
-```
-<StudyName> Angiotools Formated <timestamp>.xlsx
-```
-
-### Vessel Overlap:
-
-* RGB overlays (green + red + yellow highlights)
-* Heatmaps of intensity overlap
-* Binary overlap masks
-* Metrics (Manders, Pearson, Dice, Jaccard)
-
----
 
 ## 👤 Author
 
