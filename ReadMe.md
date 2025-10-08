@@ -173,6 +173,13 @@ python compute_vessel_overlap.py
   * Excludes `MERGE` and `jpgscale` files
 
 
+* Generate the output per cell: 
+* <cell_id>_components.pkl.gz : masks and binary files 
+* <cell_id>_grid_images.png: image with all the grid
+* <cell_id>_metrics.xlsx: computed metrics of overlap
+* <cell_id>_overlay_green_red.png: green image with red and colors
+* <cell_id>_overlay_green_red_binary.png: binary map of the overlay
+
 ## 👤 Author
 
 **Giorgio Ricciardiello Mejia**
