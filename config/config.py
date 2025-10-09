@@ -40,3 +40,5 @@ CONFIG = {
 # # Auto-create directories so they always exist
 # for path in CONFIG["paths"].values():
 #     pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+
+

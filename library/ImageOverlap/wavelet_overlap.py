@@ -392,9 +392,12 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
     # se = morphology.disk(skeleton_radius_px)
     se = morphology.disk(1)  # small structuring element
 
-    r_dil = morphology.binary_dilation(r_skel, se)
-    g_dil = morphology.binary_dilation(g_skel, se)
-    near_overlap = (g_skel & r_dil) | (r_skel & g_dil)
+    # IF dilate before overlap then do:
+    # r_dil = morphology.binary_dilation(r_skel, se)
+    # g_dil = morphology.binary_dilation(g_skel, se)
+    # near_overlap = (g_skel & r_dil) | (r_skel & g_dil)
+    # Exact (pixel-perfect) overlap, remove the dilation
+    near_overlap = g_skel & r_skel
 
     # Structural detection -> mask and edges
     g_mask = (green_u8 > 0).astype(np.uint8)  # green vessel presence

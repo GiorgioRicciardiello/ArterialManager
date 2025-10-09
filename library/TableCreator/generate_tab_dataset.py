@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 import numpy as np
 
+
 class GenerateDataset:
     def __init__(self, path_tables: Path,
                  output_path: Path, ):
@@ -44,7 +45,7 @@ class GenerateDataset:
 
         # columns that the output will have
         self.cols_formated = list(
-            {'Study Name', 'Sample Name', "Image Name", "Timepoint", "Cell type", "Density", "Cell count",
+            {'Study Name', 'Sample Name', "Image Name", "Timepoint", 'Timepoint_datetime', "Cell type", "Density", "Cell count",
              "Vessels Area", "Total Number of Junctions Normalize", "Total Number of Junctions",
              "Junctions Density Normalize", "Junctions Density", "Total Vessels Length Normalize",
              "Total Vessels Length", "Total Number of End Points Normalize", "Total Number of End Points"})
@@ -154,6 +155,23 @@ class GenerateDataset:
 
         # 2. Create the col_time_point columns
         df[col_time_point] = df["Image Name"].apply(_get_time_point_from_name)
+
+        # --- Create datetime version of the timepoint ---
+        def _convert_timepoint_to_datetime(tp: str) -> Optional[datetime]:
+            """
+            Convert strings like '00d07h32m' into datetime objects (days, hours, minutes).
+            Returns None if the format is invalid.
+            """
+            match = re.match(r"(\d{2})d(\d{2})h(\d{2})m", tp)
+            if match:
+                days, hours, minutes = map(int, match.groups())
+                return datetime(2000, 1, 1) + pd.Timedelta(days=days, hours=hours, minutes=minutes)
+            return pd.NaT
+
+        df["Timepoint_datetime"] = df[col_time_point].apply(_convert_timepoint_to_datetime)
+
+        # Get the study name
+
         # Get the study name
         df[col_study_name] = df["Image Name"].apply(_get_study_name_from_name)
 
@@ -311,3 +329,10 @@ class GenerateDataset:
             print(f"✅ Formatted Table for Study {self.study_name} saved at:\n\t{file_path}")
         except PermissionError:
             print(f"❌ Could not save file. It might be open in Excel: {file_path}")
+
+
+if __name__ == "__main__":
+    generator = GenerateDataset(path_tables=CONFIG.get('paths')['path_tables'],
+                                output_path=CONFIG.get('paths')['outputs_tabs'])
+
+    df = generator.run()
