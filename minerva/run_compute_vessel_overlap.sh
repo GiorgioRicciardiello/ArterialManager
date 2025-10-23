@@ -1,7 +1,7 @@
 #!/bin/bash
 #BSUB -J overlap_batch[1-43]         # Job array: one job per folder
 #BSUB -P acc_vascbrain
-#BSUB -q general                     # general is safer than gpu unless you actually use CUDA
+#BSUB -q premium                     # general is safer than gpu unless you actually use CUDA
 #BSUB -n 4                           # 4 cores per job
 #BSUB -R "rusage[mem=16000]"         # 8 GB RAM per job
 #BSUB -R "span[hosts=1]"             # keep cores on same host

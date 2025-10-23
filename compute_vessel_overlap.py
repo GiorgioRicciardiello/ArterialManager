@@ -89,10 +89,13 @@ if __name__ == "__main__":
         n_jobs = 2
     else:
         # Local setup: If reading directly the hard drive
-        relative_path = Path("Vascular images/FINAL/Colored/Same contrast")
-        path_input = find_base_folder(relative_path)
-        assert path_input.exists(), f"Path not found: {path_input}"
-        n_jobs = 8
+        # relative_path = Path("Vascular images/FINAL/Colored/Same contrast")
+        # path_input = find_base_folder(relative_path)
+        # assert path_input.exists(), f"Path not found: {path_input}"
+        # n_jobs = 8
+        path_input = Path(r'C:\Users\giorg\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\imgs')
+        n_jobs = 1
+
 
     path_out = path_input.parent.joinpath("processed_overlap")
     path_out.mkdir(parents=True, exist_ok=True)

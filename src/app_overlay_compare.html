@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>4-Direction Image Compare</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#111; color:#ddd;}
+  .app { display:grid; grid-template-columns:280px 1fr; height:100vh;}
+  .sidebar{ border-right:1px solid #333; overflow:auto; padding:12px;}
+  .main{ display:flex; flex-direction:column; height:100vh;}
+  .topbar{ padding:10px 12px; border-bottom:1px solid #333; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .pill{ padding:4px 8px; border:1px solid #333; border-radius:999px; font-size:12px; color:#bbb;}
+  .btn{ padding:6px 10px; border:1px solid #444; background:#1b1b1b; color:#ddd; border-radius:8px; cursor:pointer;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .hint{ color:#8a8a8a; font-size:12px;}
+  .grid{ display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:8px;}
+  .slot{ background:#181818; border:1px dashed #444; border-radius:10px; padding:8px; text-align:center;}
+  .slot h4{ margin:6px 0 8px; font-size:12px; color:#aaa;}
+  .drop{ background:#0b0b0b; border:1px solid #2a2a2a; border-radius:8px; padding:8px; min-height:90px; display:flex; align-items:center; justify-content:center; color:#777;}
+  .thumb{ display:flex; align-items:center; gap:8px; padding:6px; border:1px solid #333; border-radius:8px; margin:6px 0; cursor:pointer; background:#151515;}
+  .thumb img{ width:56px; height:56px; object-fit:cover; border-radius:6px;}
+  .thumb .name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .canvas-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; background:#0e0e0e;}
+  canvas{ max-width:100%; max-height:100%; background:#000;}
+  .bar{ position:absolute; background:#ff3b30; box-shadow:0 0 0 1px #000 inset;}
+  .bar.v{ width:3px; cursor:ew-resize;}
+  .bar.h{ height:3px; cursor:ns-resize;}
+  .controls{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:10px 12px; border-top:1px solid #333;}
+  .controls label{ font-size:12px; color:#aaa; display:flex; justify-content:space-between; }
+  .pct{ color:#ddd; font-variant-numeric:tabular-nums;}
+  input[type="range"]{ width:100%;}
+  datalist option{ color:#aaa; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h3>Gallery</h3>
+    <div class="hint">Pick a folder or add images. Click a thumb, then click a slot.</div>
+    <div style="margin:10px 0;">
+      <input id="folder" type="file" webkitdirectory multiple />
+    </div>
+    <div style="margin:8px 0;">
+      <input id="files" type="file" multiple accept="image/*" />
+    </div>
+    <div id="thumbs"></div>
+  </aside>
+
+  <section class="main">
+    <div class="topbar">
+      <span class="pill">Center + 4 overlays</span>
+      <button class="btn" id="fit">Fit</button>
+      <button class="btn" id="resetBars">Reset bars</button>
+      <button class="btn" id="clearAll">Clear assignments</button>
+      <button class="btn" id="savePNG" disabled>Save PNG (300 dpi)</button>
+      <button class="btn" id="saveCSV" disabled>Save metadata CSV</button>
+      <span class="hint" id="srcHint"></span>
+    </div>
+
+    <div style="padding:10px 12px;">
+      <div class="grid">
+        <div class="slot" data-slot="center">
+          <h4>Center (Base)</h4>
+          <div class="drop">Drop or click to assign</div>
+        </div>
+        <div class="slot" data-slot="top">
+          <h4>Top overlay</h4>
+          <div class="drop">Drop or click</div>
+        </div>
+        <div class="slot" data-slot="left">
+          <h4>Left overlay</h4>
+          <div class="drop">Drop or click</div>
+        </div>
+        <div class="slot" data-slot="right">
+          <h4>Right overlay</h4>
+          <div class="drop">Drop or click</div>
+        </div>
+        <div class="slot" data-slot="bottom">
+          <h4>Bottom overlay</h4>
+          <div class="drop">Drop or click</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="canvas-wrap" id="wrap">
+      <canvas id="cv"></canvas>
+      <div class="bar v" id="barL"></div>
+      <div class="bar v" id="barR"></div>
+      <div class="bar h" id="barT"></div>
+      <div class="bar h" id="barB"></div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label>Top opacity <span class="pct" id="valTop">100%</span></label>
+        <input type="range" id="alphaTop" min="0" max="1" step="0.05" value="1" list="ticks">
+      </div>
+      <div>
+        <label>Right opacity <span class="pct" id="valRight">100%</span></label>
+        <input type="range" id="alphaRight" min="0" max="1" step="0.05" value="1" list="ticks">
+      </div>
+      <div>
+        <label>Bottom opacity <span class="pct" id="valBottom">100%</span></label>
+        <input type="range" id="alphaBottom" min="0" max="1" step="0.05" value="1" list="ticks">
+      </div>
+      <div>
+        <label>Left opacity <span class="pct" id="valLeft">100%</span></label>
+        <input type="range" id="alphaLeft" min="0" max="1" step="0.05" value="1" list="ticks">
+      </div>
+      <datalist id="ticks">
+        <option value="0" label="0%"></option>
+        <option value="0.25" label="25%"></option>
+        <option value="0.5" label="50%"></option>
+        <option value="0.75" label="75%"></option>
+        <option value="1" label="100%"></option>
+      </datalist>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ===== State ===== */
+const state = {
+  images: [],                 // {name, blobURL, img, relPath}
+  assign: { center:null, top:null, right:null, bottom:null, left:null },
+  bars: { L:0.33, R:0.67, T:0.33, B:0.67 },
+  alphas: { top:1, right:1, bottom:1, left:1 },
+  fitScale: 1,
+  sourceRoot: ""              // best-effort folder hint (from webkitRelativePath)
+};
+
+/* ===== DOM ===== */
+const thumbs = document.getElementById('thumbs');
+const wrap = document.getElementById('wrap');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const barL = document.getElementById('barL');
+const barR = document.getElementById('barR');
+const barT = document.getElementById('barT');
+const barB = document.getElementById('barB');
+const srcHint = document.getElementById('srcHint');
+
+/* ===== Loaders ===== */
+async function filesToImages(fileList) {
+  const files = [...fileList].filter(f => f.type.startsWith('image/'));
+  for (const f of files) {
+    const url = URL.createObjectURL(f);
+    const img = await loadImage(url);
+    const rel = f.webkitRelativePath || f.name;
+    if (!state.sourceRoot && f.webkitRelativePath) {
+      const parts = f.webkitRelativePath.split('/');
+      if (parts.length > 1) state.sourceRoot = parts[0];
+    }
+    state.images.push({ name:f.name, blobURL:url, img, relPath:rel });
+  }
+  srcHint.textContent = state.sourceRoot ? `source: ${state.sourceRoot}/…` : '';
+  renderThumbs();
+  updateSaveButtons();
+}
+
+function loadImage(url){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url; }); }
+
+/* ===== Thumbs & Assign ===== */
+function renderThumbs() {
+  thumbs.innerHTML = '';
+  state.images.forEach((it, idx) => {
+    const el = document.createElement('div');
+    el.className = 'thumb'; el.draggable = true;
+    el.addEventListener('dragstart', ev => ev.dataTransfer.setData('text/plain', idx.toString()));
+    el.addEventListener('click', () => pendingAssign = idx);
+
+    const img = document.createElement('img'); img.src = it.blobURL;
+    const name = document.createElement('div'); name.className = 'name'; name.textContent = it.relPath;
+    el.appendChild(img); el.appendChild(name); thumbs.appendChild(el);
+  });
+}
+
+let pendingAssign = null;
+document.querySelectorAll('.slot').forEach(slot => {
+  const key = slot.dataset.slot; const drop = slot.querySelector('.drop');
+  slot.addEventListener('dragover', e => e.preventDefault());
+  slot.addEventListener('drop', e => { e.preventDefault(); const idx = +e.dataTransfer.getData('text/plain'); assignTo(key, idx); });
+  drop.addEventListener('click', () => { if (pendingAssign != null) assignTo(key, pendingAssign); });
+});
+
+function assignTo(slotKey, idx){
+  state.assign[slotKey] = idx;
+  updateSlotPreview(slotKey);
+  draw(); updateSaveButtons();
+}
+function updateSlotPreview(key){
+  const slot = document.querySelector(`.slot[data-slot="${key}"] .drop`);
+  const idx = state.assign[key];
+  if (idx == null) { slot.textContent = 'Drop or click to assign'; return; }
+  const it = state.images[idx];
+  slot.innerHTML = `<img src="${it.blobURL}" style="max-width:100%;max-height:120px;border-radius:6px">`;
+}
+
+/* ===== Canvas / Draw ===== */
+function setCanvasToCenter(){
+  const cIdx = state.assign.center; if (cIdx == null) return;
+  const base = state.images[cIdx].img;
+  const W = wrap.clientWidth - 40, H = wrap.clientHeight - 40;
+  const s = Math.min(W/base.width, H/base.height); state.fitScale = s;
+  cv.width = Math.round(base.width*s); cv.height = Math.round(base.height*s);
+}
+function draw(){
+  const cIdx = state.assign.center; if (cIdx == null) { ctx.clearRect(0,0,cv.width,cv.height); return; }
+  setCanvasToCenter();
+  const base = state.images[cIdx].img, s=state.fitScale, W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.drawImage(base,0,0,base.width,base.height,0,0,W,H);
+  const get=(k)=> state.assign[k]!=null ? state.images[state.assign[k]].img : null;
+  const I = { top:get('top'), right:get('right'), bottom:get('bottom'), left:get('left') };
+  const drawScaled=(img,sx,sy,sw,sh,dx,dy,dw,dh,a=1)=>{ if(!img||sw<=0||sh<=0||dw<=0||dh<=0)return; ctx.save(); ctx.globalAlpha=a; ctx.drawImage(img,sx/s,sy/s,sw/s,sh/s,dx,dy,dw,dh); ctx.restore(); };
+  const xL=Math.round(W*state.bars.L), xR=Math.round(W*state.bars.R), yT=Math.round(H*state.bars.T), yB=Math.round(H*state.bars.B);
+  drawScaled(I.left,0,0,xL,H,0,0,xL,H,state.alphas.left);
+  drawScaled(I.right,xR,0,W-xR,H,xR,0,W-xR,H,state.alphas.right);
+  drawScaled(I.top,0,0,W,yT,0,0,W,yT,state.alphas.top);
+  drawScaled(I.bottom,0,yB,W,H-yB,0,yB,W,H-yB,state.alphas.bottom);
+  positionBars();
+}
+function positionBars(){
+  const W=cv.width,H=cv.height, wr=wrap.getBoundingClientRect(), offX=(wr.width-W)/2, offY=(wr.height-H)/2;
+  const pxL=Math.round(W*state.bars.L)+offX, pxR=Math.round(W*state.bars.R)+offX, pxT=Math.round(H*state.bars.T)+offY, pxB=Math.round(H*state.bars.B)+offY;
+  Object.assign(barL.style,{left:pxL+'px',top:offY+'px',height:H+'px'});
+  Object.assign(barR.style,{left:pxR+'px',top:offY+'px',height:H+'px'});
+  Object.assign(barT.style,{left:offX+'px',top:pxT+'px',width:W+'px'});
+  Object.assign(barB.style,{left:offX+'px',top:pxB+'px',width:W+'px'});
+}
+
+/* ===== Drag bars ===== */
+function makeDrag(bar,type){
+  let dragging=false; bar.addEventListener('mousedown',e=>{dragging=true;e.preventDefault();});
+  window.addEventListener('mouseup',()=>dragging=false);
+  window.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const r=cv.getBoundingClientRect();
+    if(type==='L'||type==='R'){ const x=Math.min(Math.max(0,e.clientX-r.left),r.width); state.bars[type]=x/r.width; }
+    else{ const y=Math.min(Math.max(0,e.clientY-r.top),r.height); state.bars[type]=y/r.height; }
+    draw();
+  });
+}
+makeDrag(barL,'L'); makeDrag(barR,'R'); makeDrag(barT,'T'); makeDrag(barB,'B');
+
+/* ===== Opacity sliders with % readout ===== */
+const alphaMap = [
+  {id:'Top', key:'top'}, {id:'Right', key:'right'},
+  {id:'Bottom', key:'bottom'}, {id:'Left', key:'left'}
+];
+alphaMap.forEach(({id,key})=>{
+  const slider = document.getElementById('alpha'+id);
+  const label = document.getElementById('val'+id);
+  const upd = ()=>{ state.alphas[key]=parseFloat(slider.value); label.textContent = Math.round(state.alphas[key]*100)+'%'; draw(); };
+  slider.addEventListener('input', upd); upd();
+});
+
+/* ===== Buttons ===== */
+document.getElementById('fit').onclick = ()=>{ setCanvasToCenter(); draw(); };
+document.getElementById('resetBars').onclick = ()=>{ state.bars={L:0.33,R:0.67,T:0.33,B:0.67}; draw(); };
+document.getElementById('clearAll').onclick = ()=>{
+  Object.keys(state.assign).forEach(k=>state.assign[k]=null);
+  document.querySelectorAll('.slot .drop').forEach(d=>d.textContent='Drop or click to assign');
+  draw(); updateSaveButtons();
+};
+function updateSaveButtons(){
+  const ok = state.assign.center!=null;
+  document.getElementById('savePNG').disabled = !ok;
+  document.getElementById('saveCSV').disabled = !ok;
+}
+
+/* ===== File inputs ===== */
+document.getElementById('folder').addEventListener('change', e => filesToImages(e.target.files));
+document.getElementById('files').addEventListener('change', e => filesToImages(e.target.files));
+
+/* ===== Save PNG (300 dpi) + CSV metadata ===== */
+// Canvas does not set DPI. We inject pHYs chunk for 300 dpi (~11811 px/m).
+function addPNGpHYs(pngBlob, ppm=11811){
+  return pngBlob.arrayBuffer().then(buf=>{
+    const bytes=new Uint8Array(buf);
+    // find IHDR end (fixed at 8(sig)+4(len)+4('IHDR')+13(data)+4(crc)=33)
+    const ihdrEnd=33;
+    const textEncoder = new TextEncoder();
+    const type = textEncoder.encode('pHYs');
+    const chunk = new Uint8Array(4+4+9+4); // len+type+data+crc
+    // len = 9
+    chunk[0]=0; chunk[1]=0; chunk[2]=0; chunk[3]=9;
+    chunk.set(type,4);
+    const data = new DataView(chunk.buffer,8,9);
+    data.setUint32(0, ppm);     // X pixels per unit
+    data.setUint32(4, ppm);     // Y pixels per unit
+    data.setUint8(8, 1);        // unit specifier: meter
+    // crc over 'pHYs'+data
+    const crc = crc32(chunk.subarray(4,4+9));
+    const dv = new DataView(chunk.buffer);
+    dv.setUint32(4+9, crc);
+    // assemble: sig + IHDR... + pHYs + rest
+    const out = new Uint8Array(bytes.length + chunk.length);
+    out.set(bytes.subarray(0, ihdrEnd), 0);
+    out.set(chunk, ihdrEnd);
+    out.set(bytes.subarray(ihdrEnd), ihdrEnd + chunk.length);
+    return new Blob([out], {type:'image/png'});
+  });
+}
+// CRC32
+function crc32(arr){
+  let c = ~0>>>0;
+  for(let i=0;i<arr.length;i++){
+    c ^= arr[i];
+    for(let k=0;k<8;k++) c = (c>>>1) ^ (0xEDB88320 & (-(c & 1)));
+  }
+  return (~c)>>>0;
+}
+
+function buildCompositeAtNative(){
+  const cIdx = state.assign.center; if (cIdx==null) return null;
+  const base = state.images[cIdx].img;
+  const W = base.width, H = base.height;
+  const offCanvas = document.createElement('canvas'); offCanvas.width=W; offCanvas.height=H;
+  const g = offCanvas.getContext('2d');
+  g.drawImage(base,0,0);
+  const get=(k)=> state.assign[k]!=null ? state.images[state.assign[k]].img : null;
+  const I={top:get('top'),right:get('right'),bottom:get('bottom'),left:get('left')};
+  const xL=Math.round(W*state.bars.L), xR=Math.round(W*state.bars.R), yT=Math.round(H*state.bars.T), yB=Math.round(H*state.bars.B);
+  g.save(); g.globalAlpha=state.alphas.left; if(I.left) g.drawImage(I.left,0,0,xL,H,0,0,xL,H); g.restore();
+  g.save(); g.globalAlpha=state.alphas.right; if(I.right) g.drawImage(I.right,xR,0,W-xR,H,xR,0,W-xR,H); g.restore();
+  g.save(); g.globalAlpha=state.alphas.top; if(I.top) g.drawImage(I.top,0,0,W,yT,0,0,W,yT); g.restore();
+  g.save(); g.globalAlpha=state.alphas.bottom; if(I.bottom) g.drawImage(I.bottom,0,yB,W,H-yB,0,yB,W,H-yB); g.restore();
+  return offCanvas;
+}
+
+function suggestedBaseName(){
+  const baseIdx = state.assign.center;
+  const baseName = baseIdx!=null ? state.images[baseIdx].name.replace(/\.[^.]+$/,'') : 'overlay';
+  const root = state.sourceRoot ? state.sourceRoot + '_' : '';
+  return `${root}${baseName}_4dir`;
+}
+
+document.getElementById('savePNG').onclick = async ()=>{
+  const canvas = buildCompositeAtNative(); if(!canvas) return;
+  const raw = await new Promise(res=>canvas.toBlob(b=>res(b),'image/png'));
+  const withDPI = await addPNGpHYs(raw, 11811); // 300 dpi
+  triggerDownload(withDPI, suggestedBaseName()+'.png');
+};
+
+document.getElementById('saveCSV').onclick = ()=>{
+  const rows = [];
+  const baseIdx = state.assign.center;
+  const getName=(k)=> state.assign[k]!=null ? state.images[state.assign[k]].relPath : '';
+  const bars = {
+    left_pct:  Math.round(state.bars.L*100),
+    right_pct: Math.round((1-state.bars.R)*100), // revealed from right
+    top_pct:   Math.round(state.bars.T*100),
+    bottom_pct:Math.round((1-state.bars.B)*100)
+  };
+  const al = {
+    top_opacity:   state.alphas.top,
+    right_opacity: state.alphas.right,
+    bottom_opacity:state.alphas.bottom,
+    left_opacity:  state.alphas.left
+  };
+  rows.push(['input_root', state.sourceRoot || '']);
+  rows.push(['center', getName('center')]);
+  rows.push(['top', getName('top')]);
+  rows.push(['right', getName('right')]);
+  rows.push(['bottom', getName('bottom')]);
+  rows.push(['left', getName('left')]);
+  rows.push(['bar_left_pct', bars.left_pct]);
+  rows.push(['bar_right_pct', bars.right_pct]);
+  rows.push(['bar_top_pct', bars.top_pct]);
+  rows.push(['bar_bottom_pct', bars.bottom_pct]);
+  rows.push(['opacity_top', al.top_opacity]);
+  rows.push(['opacity_right', al.right_opacity]);
+  rows.push(['opacity_bottom', al.bottom_opacity]);
+  rows.push(['opacity_left', al.left_opacity]);
+  const csv = rows.map(r=>r.map(x=>String(x).replace(/"/g,'""')).map(x=>`"${x}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  triggerDownload(blob, suggestedBaseName()+'_metadata.csv');
+};
+
+function triggerDownload(blob, filename){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ===== Resize ===== */
+window.addEventListener('resize', ()=>{ setCanvasToCenter(); draw(); });
+
+/* ===== Init ===== */
+draw();
+</script>
+</body>
+</html>

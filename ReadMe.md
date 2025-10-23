@@ -146,7 +146,7 @@ Outputs: `results/master_table/`
 
 ## 3. Run the Vessel Overlap Analysis  ▶️
 <p align="center">
-  <img src="results/static/grid_image.png" alt="Grid Image " width="900"/>
+  <img src="results/static/grid_image.png" alt="Grid Image " width="400"/>
 </p>
 
 * RGB overlays (green + red + yellow highlights)
@@ -179,6 +179,26 @@ python compute_vessel_overlap.py
 * <cell_id>_metrics.xlsx: computed metrics of overlap
 * <cell_id>_overlay_green_red.png: green image with red and colors
 * <cell_id>_overlay_green_red_binary.png: binary map of the overlay
+
+
+## 4. Visualize Results   ▶️
+Once the images are generated at different filters and intensity we can now visualize them in an overlap modality. 
+
+Double-click or right-click → Open With → Chrome/Edge/Firefox, the file 
+```bash 
+src/app_overlay_compare.html
+```
+
+This will give you a display to select the folder source with all the images you want to compare and a selection to overlay
+<p align="center">
+  <img src="results/static/app_overlay_interface.png" alt="Grid Image " width="900"/>
+</p>
+
+You can move the bars to select how much you want to visualize per image and select an opacity level. 
+
+The image can be saved as png and a metadata with the levels and separate images path for reproducibility. 
+
+
 
 ## 👤 Author
 
