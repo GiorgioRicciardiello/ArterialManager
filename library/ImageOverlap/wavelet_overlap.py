@@ -96,6 +96,8 @@ from library.ImageOverlap.utils import (_normalize01,
                                         _skeletonize_from_vesselness,
                                         _manders_coeffs,
                                         _edges_to_rgba)
+import cv2
+from scipy.ndimage import distance_transform_edt as edt
 
 
 def _compute_overlap_metrics(G:np.ndarray,
@@ -149,6 +151,259 @@ def _compute_overlap_metrics(G:np.ndarray,
         f"Dice_skeletons_{label}": dice,
         f"Jaccard_skeletons_{label}": jaccard
     }
+
+
+
+
+def _compute_coloc_metrics_ml(
+    G:np.ndarray,
+    R:np.ndarray,
+    g_norm:np.ndarray,
+    g_clean:np.ndarray,
+    r_norm:np.ndarray,
+    r_clean:np.ndarray,
+    g_v:np.ndarray, r_v:np.ndarray,
+    g_skel:np.ndarray, r_skel:np.ndarray,
+    vessel_mask:np.ndarray,
+    near_overlap:np.ndarray,
+    overlap_strength:np.ndarray,
+    heatmap_intensity:np.ndarray,
+    heatmap_binary:np.ndarray,
+    overlay:np.ndarray
+):
+    """
+    Compute quantitative features describing structural and intensity-based
+    colocalization between red and green vascular networks.
+
+    Returns
+    -------
+    metrics : dict
+        Dictionary with >40 scalar metrics. Each key is interpretable and
+        normalized for ML or comparative analysis.
+
+    Interpretation summary
+    ----------------------
+    * `_abs`  = absolute sum of pixel intensities or counts (depends on metric).
+    * `_pct`  = normalized by total image area → comparable across samples.
+    * 'weighted_*' = normalized by total signal intensity of each channel.
+    * Values ~1 indicate strong or complete colocalization; values ~0 indicate poor overlap.
+    """
+
+    H, W = g_norm.shape
+    N = float(H * W)
+    def _pct(x):
+        """Return mean intensity or binary fraction over total pixels."""
+        return float(np.asarray(x, float).sum()) / (N + 1e-8)
+
+    # ==============================================================
+    # 1. CHANNEL ENERGY METRICS (global signal levels)
+    # --------------------------------------------------------------
+    # Quantify total and normalized intensity before and after cleaning and Frangi enhancement.
+    # Useful to detect staining strength, uneven exposure, or processing bias.
+    # ==============================================================
+
+    g_norm_abs, g_clean_abs = g_norm.sum(), g_clean.sum()
+    r_norm_abs, r_clean_abs = r_norm.sum(), r_clean.sum()
+    g_v_abs, r_v_abs = g_v.sum(), r_v.sum()
+
+    g_norm_pct, g_clean_pct = _pct(g_norm), _pct(g_clean)
+    r_norm_pct, r_clean_pct = _pct(r_norm), _pct(r_clean)
+    g_v_pct, r_v_pct = _pct(g_v), _pct(r_v)
+
+    # ==============================================================
+    # 2. OVERLAP INTENSITY SUMS
+    # --------------------------------------------------------------
+    # Represent total coincidence between the two channels.
+    # "overlap_strength" = pixelwise product/geometric mean of vessel intensities.
+    # ==============================================================
+
+    sum_overlap_strength = float(overlap_strength.sum())
+    sum_heat_int = float(heatmap_intensity.sum())
+    sum_heat_bin = float(heatmap_binary.sum())
+    sum_vessel = float(vessel_mask.sum())
+
+    sum_green, sum_red = float(G.sum()), float(R.sum())
+
+    # ==============================================================
+    # 3. INTENSITY-WEIGHTED FRACTIONS
+    # --------------------------------------------------------------
+    # Normalized by total channel energy. Values 0–1.
+    # Show what fraction of each channel’s total signal coincides with the other.
+    # ==============================================================
+
+    weighted_overlap_green = sum_overlap_strength / (sum_green + 1e-8)  # fraction of green overlapping red
+    weighted_overlap_red = sum_overlap_strength / (sum_red + 1e-8)      # fraction of red overlapping green
+    weighted_overlap_mean = 2 * sum_overlap_strength / (sum_green + sum_red + 1e-8)  # symmetric average
+    green_red_ratio = (sum_green + 1e-8) / (sum_red + 1e-8)  # global channel intensity balance
+    # If > 1→ green channel dominates (brighter overall).
+    # If < 1 → red channel dominates (weaker green signal).
+    red_green_ratio = 1/green_red_ratio  # global channel intensity balance
+
+    # ==============================================================
+    # 4. COSINE SIMILARITY (INTENSITY SHAPE AGREEMENT)
+    # --------------------------------------------------------------
+    # Measures alignment of intensity vectors ignoring scale.
+    # 1 → identical spatial intensity pattern; 0 → orthogonal (no relation).
+    # ==============================================================
+
+    vm = vessel_mask.astype(bool)
+    Gm, Rm = G[vm].astype(float), R[vm].astype(float)
+    cos_sim = (Gm @ Rm) / (np.linalg.norm(Gm) * np.linalg.norm(Rm) + 1e-12) if vm.any() else np.nan
+
+    # ==============================================================
+    # 5. HISTOGRAM OVERLAP METRICS (DISTRIBUTIONAL SIMILARITY)
+    # --------------------------------------------------------------
+    # Bhattacharyya Coefficient and Hellinger Distance between intensity histograms.
+    # BC ∈ [0,1]: 1 → identical distributions; 0 → disjoint.
+    # Hellinger ∈ [0,1]: 0 → identical; 1 → dissimilar.
+    # ==============================================================
+
+    nbins = 64
+    if vm.any():
+        p, _ = np.histogram(Gm, bins=nbins, range=(0,255), density=True)
+        q, _ = np.histogram(Rm, bins=nbins, range=(0,255), density=True)
+        bhattacharyya = float(np.sqrt(p * q).sum())
+        hellinger = float(np.sqrt(max(0.0, 1.0 - bhattacharyya)))
+    else:
+        bhattacharyya, hellinger = np.nan, np.nan
+
+    # ==============================================================
+    # 6. MUTUAL INFORMATION (INFORMATION SHARED)
+    # --------------------------------------------------------------
+    # Captures nonlinear intensity dependencies.
+    # Larger MI ⇒ higher information overlap beyond linear correlation.
+    # ==============================================================
+
+    if vm.any():
+        joint, _, _ = np.histogram2d(Gm, Rm, bins=nbins, range=[[0,255],[0,255]], density=True)
+        pj = joint + 1e-12
+        pi, pj2 = pj.sum(1, keepdims=True), pj.sum(0, keepdims=True)
+        mutual_information = float((pj * (np.log(pj) - np.log(pi) - np.log(pj2))).sum())
+    else:
+        mutual_information = np.nan
+
+    # ==============================================================
+    # 7. LI’s INTENSITY CORRELATION QUOTIENT (ICQ)
+    # --------------------------------------------------------------
+    # Counts how often deviations of G and R intensities have the same sign.
+    # Range: [-0.5, +0.5]; positive → colocalized; negative → segregated.
+    # ==============================================================
+
+    if vm.any():
+        Gc, Rc = Gm - Gm.mean(), Rm - Rm.mean()
+        icq = float(np.mean(np.sign(Gc * Rc)))
+    else:
+        icq = np.nan
+
+    # ==============================================================
+    # 8. BINARY OVERLAP METRICS (DETECTION-STYLE)
+    # --------------------------------------------------------------
+    # Precision/Recall/F1 between binary masks of red and green.
+    # Useful for model learning or segmentation accuracy estimation.
+    # ==============================================================
+
+    r_bw = R > 0
+    g_bw = G > 0
+    tp = float(np.logical_and(r_bw, g_bw).sum())
+    precision = tp / (r_bw.sum() + 1e-8)
+    recall = tp / (g_bw.sum() + 1e-8)
+    f1 = 2 * precision * recall / (precision + recall + 1e-8)
+
+    # ==============================================================
+    # 9. SKELETON DISTANCE METRICS (GEOMETRIC AGREEMENT)
+    # --------------------------------------------------------------
+    # ASSD: average symmetric distance between skeletons.
+    # Hausdorff: maximum surface separation (worst-case).
+    # Units: pixels. Smaller = better colocalization.
+    # ==============================================================
+
+    def _assd(a, b):
+        if not a.any() or not b.any(): return np.nan
+        da, db = edt(~a), edt(~b)
+        return float((da[b].mean() + db[a].mean()) / 2)
+
+    def _hausdorff(a, b):
+        if not a.any() or not b.any(): return np.nan
+        return float(max(edt(~b)[a].max(), edt(~a)[b].max()))
+
+    assd_skel = _assd(g_skel.astype(bool), r_skel.astype(bool))
+    hausdorff_skel = _hausdorff(g_skel.astype(bool), r_skel.astype(bool))
+
+    # ==============================================================
+    # 10. SKELETON MORPHOLOGY METRICS
+    # --------------------------------------------------------------
+    # Endpoints = vessel tips (connectivity=1)
+    # Branchpoints = vessel junctions (connectivity≥3)
+    # Useful for assessing structural complexity and connectivity alignment.
+    # ==============================================================
+
+    kernel = np.ones((3,3), np.uint8)
+    def _end_branch(skel):
+        n = cv2.filter2D(skel.astype(np.uint8), -1, kernel) - skel.astype(np.uint8)
+        ends = int(((n == 1) & (skel == 1)).sum())
+        branches = int(((n >= 3) & (skel == 1)).sum())
+        return ends, branches
+
+    g_end, g_branch = _end_branch(g_skel)
+    r_end, r_branch = _end_branch(r_skel)
+
+    # ==============================================================
+    # 11. AGGREGATE RESULTS
+    # --------------------------------------------------------------
+    # Combine all scalar features into a single dict for downstream analysis.
+    # ==============================================================
+
+    return {
+        # channel signal
+        "g_norm_abs": g_norm_abs, "g_norm_pct": g_norm_pct,
+        "g_clean_abs": g_clean_abs, "g_clean_pct": g_clean_pct,
+        "r_norm_abs": r_norm_abs, "r_norm_pct": r_norm_pct,
+        "r_clean_abs": r_clean_abs, "r_clean_pct": r_clean_pct,
+        "g_v_abs": g_v_abs, "g_v_pct": g_v_pct,
+        "r_v_abs": r_v_abs, "r_v_pct": r_v_pct,
+
+        # overlap intensities
+        "sum_overlap_strength": sum_overlap_strength,
+        "sum_heatmap_intensity": sum_heat_int,
+        "sum_heatmap_binary": sum_heat_bin,
+        "frac_heatmap_intensity": sum_heat_int / (sum_vessel + 1e-8),
+        "frac_heatmap_binary": sum_heat_bin / (sum_vessel + 1e-8),
+
+        "sum_vessel_mask": float(vessel_mask.sum()),
+        "sum_overlay": float(overlay.sum()),
+        "sum_near_overlap": float(near_overlap.sum()),
+
+        # weighted overlap measures
+        "weighted_overlap_green": weighted_overlap_green,
+        "weighted_overlap_red": weighted_overlap_red,
+        "weighted_overlap_mean": weighted_overlap_mean,
+        "green_red_ratio": green_red_ratio,
+        'red_green_ratio': red_green_ratio,
+
+
+        # distribution / information metrics
+        "cosine_similarity": cos_sim,
+        "bhattacharyya_coeff": bhattacharyya,
+        "hellinger_distance": hellinger,
+        "mutual_information": mutual_information,
+        "icq": icq,
+
+        # detection-style binary metrics
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+
+        # skeleton geometry and topology
+        "g_skel_len_abs": float(g_skel.sum()), "g_skel_len_pct": _pct(g_skel),
+        "r_skel_len_abs": float(r_skel.sum()), "r_skel_len_pct": _pct(r_skel),
+        "skel_overlap_len_abs": float((g_skel & r_skel).sum()),
+        "skel_overlap_len_pct": _pct(g_skel & r_skel),
+        "assd_skeleton": assd_skel,
+        "hausdorff_skeleton": hausdorff_skel,
+        "g_endpoints": g_end, "g_branchpoints": g_branch,
+        "r_endpoints": r_end, "r_branchpoints": r_branch,
+    }
+
 
 # -----------------------------
 # Main unified function
@@ -324,19 +579,31 @@ def coloc_vessels_with_wbns(path_green:pathlib.Path,
                                            vessel_mask=vessel_mask,
                                            label="binary")
 
-    # merge both dictionaries
-    metrics = {**metrics_int, **metrics_bin}
-
-    df_metrics = pd.DataFrame(metrics.items(), columns=["Metric", "Value"])
-    # Extract method and clean up metric names
-    df_metrics["method"] = df_metrics["Metric"].apply(
-        lambda x: "intensity" if x.endswith("_intensity") else "binary"
+    # --- Step 6b: Absolute and weighted overlap measures ---
+    metrics_abs = _compute_coloc_metrics_ml(
+        G, R,
+        g_norm, g_clean, r_norm, r_clean,
+        g_v, r_v,
+        g_skel, r_skel,
+        vessel_mask, near_overlap,
+        overlap_strength, heatmap_intensity,
+        heatmap_binary, overlay
     )
 
-    df_metrics["Metric"] = df_metrics["Metric"].str.replace("_intensity", "", regex=False)
-    df_metrics["Metric"] = df_metrics["Metric"].str.replace("_binary", "", regex=False)
+    # merge both dictionaries
+    metrics = {**metrics_int, **metrics_bin, **metrics_abs}
 
 
+    df_metrics = pd.DataFrame(metrics.items(), columns=["Metric", "Value"])
+    df_metrics["method"] = df_metrics["Metric"].apply(
+        lambda x: "intensity" if x.endswith("_intensity") else
+                  ("binary" if x.endswith("_binary") else "absolute")
+    )
+    df_metrics["Metric"] = (df_metrics["Metric"]
+                            .str.replace("_intensity", "", regex=False)
+                            .str.replace("_binary", "", regex=False))
+
+    df_metrics.sort_values(by=["method", 'Metric'], ascending=[False,True], inplace=True)
     df_metrics.to_excel(path_output.joinpath(f'{cell_id}_metrics.xlsx'), index=False)
     # --- Step 7: Store the data ---
     components = {

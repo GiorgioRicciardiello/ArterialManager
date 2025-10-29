@@ -69,14 +69,10 @@ def find_base_folder(relative_path:Path) -> Path:
 
 
 
-def is_minerva():
+def is_minerva() -> bool:
     hostname = socket.gethostname()
-    if hostname == 'li04e04':
+    if hostname == 'li04e04' or Path.cwd().parents[-2] == '/sc':
         return True
-
-    if  Path.cwd().parents[-2] == '/sc':
-        return True
-
     else:
         return False
 

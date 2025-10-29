@@ -1,4 +1,4 @@
-name: arterial_manager_env
+name: imgai
 channels:
   - conda-forge
   - defaults
