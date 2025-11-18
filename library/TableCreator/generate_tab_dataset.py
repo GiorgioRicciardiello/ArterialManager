@@ -184,6 +184,22 @@ class GenerateDataset:
 
         # cell name independent to the time stamp
         df['sample_name'] = df["Image Name"].apply(self._get_cell_name)
+
+        col_numeric = ['Explant Area',
+                       'Vessels Area',
+                       'Vessels Percentage Area',
+                       'Total Number of Junctions',
+                       'Junctions Density',
+                       'Average Vessels Length',
+                       'Total Number of End Points',
+                       'Average Vessel Diameter',
+                       'Medial E Lacunarity',
+                       'E Lacunarity Gradient',
+                       'Medial F Lacunarity',
+                       'F Lacunarity Gradient',]
+        for col in col_numeric:
+            df[col] = df[col].astype(float)
+
         self.tables[key_tab] = df
 
     @staticmethod

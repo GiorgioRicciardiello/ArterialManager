@@ -16,7 +16,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import matplotlib.colors as mcolors
 from typing import Dict, Optional, List, Tuple
 from joblib import Parallel, delayed
-from library.ImageOverlap.display import *
+# from library.ImageOverlap.display import *
 
 # -----------------------------
 # Helper functions

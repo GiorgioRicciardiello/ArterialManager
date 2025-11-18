@@ -4,6 +4,7 @@ Author: Giorgio Ricciardiello
 configurations parameters for the paths
 """
 import pathlib
+from pathlib import Path
 
 import pathlib
 from datetime import datetime
@@ -18,6 +19,7 @@ CONFIG = {
         "data": ROOT_PATH / "data",
         "path_tables": ROOT_PATH / "data" / "tables",
         "path_imgs": ROOT_PATH / "data" / "imgs",
+        "path_feature_imgs": ROOT_PATH / "data" / "feature_imgs",
 
         "outputs_imgs": ROOT_PATH / "results" / 'proc_imgs',
         "outputs_tabs": ROOT_PATH / "results" / 'master_table',
@@ -26,6 +28,11 @@ CONFIG = {
         "predictions": ROOT_PATH / "outputs" / "predictions",
         "visualizations": ROOT_PATH / "outputs" / "visualizations",
         "models": ROOT_PATH / "models",
+
+
+        'local_images':  Path(r'C:\Users\riccig01\Documents\SameContrast'),
+        'local_images_output': Path(r'C:\Users\riccig01\Documents'),
+
     },
     "green_img": {
         "param": {}
@@ -36,6 +43,7 @@ CONFIG = {
 
 
 }
+
 
 # # Auto-create directories so they always exist
 # for path in CONFIG["paths"].values():

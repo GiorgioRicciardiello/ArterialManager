@@ -130,3 +130,93 @@ These describe **signal strength**, **network topology**, and **information over
 * **Values near 0** → independent or poorly aligned channels.
 * **Distance metrics** (`assd`, `hausdorff`) → *smaller is better*.
 * Always interpret intensity-based metrics in the context of channel balance (`green_red_ratio`) to avoid bias from exposure differences.
+
+
+---
+Yes — many more **quantitative overlap metrics** are used in biomedical and medical-imaging research to describe *how two spatial distributions coincide*.
+Your current function covers the “core five,” but you can expand it with deterministic, interpretable measures grouped below.
+
+---
+
+## 🩸 1. Area-based overlap extensions (set-theoretic)
+
+| Metric                                        | Formula                                          | Interpretation                                 | Typical Range |     |     |                                              |      |                                                                                          |     |
+| --------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | ------------- | --- | --- | -------------------------------------------- | ---- | ---------------------------------------------------------------------------------------- | --- |
+| **Overlap Coefficient (Szymkiewicz–Simpson)** | ( \frac{                                         | A∩B                                            | }{\min(       | A   | ,   | B                                            | )} ) | Fraction of the smaller region overlapped by the other. Robust when vessel areas differ. | 0–1 |
+| **Tanimoto Coefficient**                      | ( \frac{A⋅B}{|A|^2 + |B|^2 - A⋅B} )              | Continuous version of Jaccard for intensities. | 0–1           |     |     |                                              |      |                                                                                          |     |
+| **Volume Similarity (VS)**                    | ( 1 - \frac{                                     | A-B                                            | }{            | A+B | } ) | Balance between the two regions’ total size. | −1–1 |                                                                                          |     |
+| **Mean Surface Overlap (MSO)**                | Average of overlap between dilated vessel edges. | Geometric tolerance-aware overlap.             | 0–1           |     |     |                                              |      |                                                                                          |     |
+
+---
+
+## ⚙️ 2. Intensity-weighted or correlation-based extensions
+
+| Metric                                  | Description                                                                                | Advantage                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| **Spearman rank correlation**           | Non-linear monotonic correlation of intensities (less sensitive to outliers than Pearson). | Detects monotonic but non-linear dependencies.                               |
+| **Normalized Mutual Information (NMI)** | ( NMI = \frac{H(A) + H(B)}{H(A,B)} )                                                       | Standardized information-theoretic overlap; used in multimodal registration. |
+| **Structural Similarity Index (SSIM)**  | From `skimage.metrics.structural_similarity`; compares local contrast and luminance.       | Captures perceptual similarity between red and green patterns.               |
+| **Overlap Energy (OE)**                 | ( \frac{\sum (A·B)}{\sqrt{\sum A^2 \sum B^2}} )                                            | Cosine similarity for image overlap, equivalent to vector alignment.         |
+
+---
+
+## 🧬 3. Morphometric / skeleton-aware overlap
+
+| Metric                                | Formula / Idea                                        | Interpretation                                           |    |          |     |                                                            |
+| ------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------- | -- | -------- | --- | ---------------------------------------------------------- |
+| **Skeleton Coverage Ratio (SCR)**     | ( \frac{                                              | R_{skel} ∩ Dil(G_{skel},r)                               | }{ | R_{skel} | } ) | Fraction of red skeleton within r-pixel of green skeleton. |
+| **Centerline Distance Mean (CLD)**    | Mean minimal distance between centerlines.            | Geometric alignment metric, like ASSD but for skeletons. |    |          |     |                                                            |
+| **Branch Correspondence Score (BCS)** | Ratio of matching branch endpoints / total endpoints. | Topological alignment of vascular trees.                 |    |          |     |                                                            |
+
+---
+
+## 🧩 4. Example — add to your function
+
+Here’s how to extend `_compute_overlap_metrics` deterministically with several of these:
+
+```python
+def _compute_overlap_metrics(G, R, g_skel, r_skel, mask_overlap, vessel_mask, label="intensity"):
+    m1, m2 = _manders_coeffs(G.astype(np.float32),
+                             R.astype(np.float32),
+                             mask_overlap.astype(np.float32))
+
+    pearson = (np.corrcoef(G[mask_overlap > 0].ravel(),
+                           R[mask_overlap > 0].ravel())[0, 1]
+               if mask_overlap.sum() > 10 else np.nan)
+
+    # Binary intersections
+    inter = np.logical_and(g_skel, r_skel).sum()
+    union = np.logical_or(g_skel, r_skel).sum() + 1e-8
+    dice = 2 * inter / (g_skel.sum() + r_skel.sum() + 1e-8)
+    jaccard = inter / union
+    overlap_coeff = inter / (min(g_skel.sum(), r_skel.sum()) + 1e-8)
+    volume_similarity = 1 - abs(g_skel.sum() - r_skel.sum()) / (g_skel.sum() + r_skel.sum() + 1e-8)
+
+    # Intensity Tanimoto
+    numerator = np.sum(G * R)
+    tanimoto = numerator / (np.sum(G**2) + np.sum(R**2) - numerator + 1e-8)
+
+    return {
+        f"Manders_M1_{label}": m1,
+        f"Manders_M2_{label}": m2,
+        f"Pearson_{label}": float(pearson),
+        f"Dice_skeletons_{label}": dice,
+        f"Jaccard_skeletons_{label}": jaccard,
+        f"OverlapCoeff_{label}": overlap_coeff,
+        f"VolumeSimilarity_{label}": volume_similarity,
+        f"Tanimoto_{label}": tanimoto
+    }
+```
+
+---
+
+## 🧠 Summary — best additional metrics
+
+| Category                  | Metric                                 | Why add it                                  |
+| ------------------------- | -------------------------------------- | ------------------------------------------- |
+| **Binary**                | Overlap coefficient, Volume similarity | Robust when area sizes differ               |
+| **Intensity**             | Tanimoto, SSIM, Spearman               | Capture non-linear or perceptual similarity |
+| **Geometry**              | Skeleton coverage, Centerline distance | Reflect vessel path alignment               |
+| **Information-theoretic** | NMI, Mutual information                | Quantify shared intensity information       |
+
+Adding 2–3 from each class gives a publication-level set of **≈15 overlap descriptors**—covering spatial, intensity, and topological coincidence comprehensively.

@@ -54,6 +54,9 @@ from library.ImageOverlap.overlap_images import run_batch_overlap_skip
 from pathlib import Path
 import string
 import socket
+from config.config import CONFIG
+import sys
+import os
 
 def find_base_folder(relative_path:Path) -> Path:
     """
@@ -70,32 +73,38 @@ def find_base_folder(relative_path:Path) -> Path:
 
 
 def is_minerva() -> bool:
+    """Detect if running inside the Minerva HPC environment."""
     hostname = socket.gethostname()
-    if hostname == 'li04e04' or Path.cwd().parents[-2] == '/sc':
+    cwd = Path.cwd()
+
+    # Match typical Minerva path structure and hostname
+    if "arion" in str(cwd) or str(cwd).startswith("/sc/arion"):
         return True
-    else:
-        return False
+    if "minerva" in hostname.lower() or "arion" in hostname.lower() or hostname.startswith("li") or hostname.startswith("ln"):
+        return True
+    if os.environ.get("LSB_JOBID") is not None:  # LSF scheduler variable always present
+        return True
+    return False
+
+
+def main(n_jobs: int | None = None):
+    """Run vascular colocalization batch analysis on local system."""
+    path_input = CONFIG.get("paths")["local_images"]
+    path_out = CONFIG.get("paths")["local_images_output"].joinpath("processed_overlap")
+
+    if n_jobs is None:
+        n_jobs = max(os.cpu_count() - 5, 1)  # reserve 5 cores
+
+    print(f"[LOCAL] Using {n_jobs} CPUs")
+    print(f"[INPUT]  {path_input}")
+    print(f"[OUTPUT] {path_out}")
+
+    path_out.mkdir(parents=True, exist_ok=True)
+
+    run_batch_overlap_skip(base_path=path_input, path_out=path_out, n_jobs=n_jobs)
 
 
 if __name__ == "__main__":
-    # 🔍 Dataset location (relative path inside the drive)
-    if is_minerva():
-        # 🧠 Minerva setup
-        path_input = Path('/sc/arion/projects/vascbrain/giocrm/VascularImages/SameContrast')
-        n_jobs = 2
-    else:
-        # Local setup: If reading directly the hard drive
-        # relative_path = Path("Vascular images/FINAL/Colored/Same contrast")
-        # path_input = find_base_folder(relative_path)
-        # assert path_input.exists(), f"Path not found: {path_input}"
-        # n_jobs = 8
-        path_input = Path(r'C:\Users\giorg\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\imgs')
-        n_jobs = 1
-
-
-    path_out = path_input.parent.joinpath("processed_overlap")
-    path_out.mkdir(parents=True, exist_ok=True)
-
-    run_batch_overlap_skip(base_path=path_input,
-                           path_out=path_out,
-                           n_jobs=n_jobs)
+    # Optional CLI argument for n_jobs
+    # user_n = int(sys.argv[1]) if len(sys.argv) > 1 else None
+    main(n_jobs=None)

@@ -11,6 +11,63 @@ All pipelines can be run via scripts with Streamlit apps and Minerva Super Compu
 
 ---
 
+Here’s the updated section to include the **GUI Launcher** in your README, with clear instructions and code-consistent formatting.
+You can insert it **after the “Installation” section** and before “Run the Table Manager”.
+
+---
+
+# Run via GUI Launcher (Recommended)
+
+To simplify execution and avoid using the terminal, **ArterialManager** includes a desktop GUI launcher located at:
+
+```
+src/app_launcher.py
+```
+
+The launcher provides buttons to start each of the main modules directly inside the **`imgai`** Conda environment.
+
+### ▶️ Launch the interface
+
+```bash
+python src/app_launcher.py
+```
+
+This will open a small window with the following options:
+
+| Button                              | Function                                                  |
+| :---------------------------------- | :-------------------------------------------------------- |
+| **Run 1️⃣ Table Manager**           | Opens the Streamlit app for Excel table processing        |
+| **Run 2️⃣ Table Visualizer**        | Opens the Streamlit app for data visualization            |
+| **Run 3️⃣ Vessel Overlap Analysis** | Runs the vessel overlap pipeline                          |
+| **Open Overlay Viewer (HTML)**      | Opens the static browser-based viewer for overlay results |
+
+Each option automatically:
+
+* Activates the `imgai` Conda environment
+* Changes the working directory to the project root (from `config/config.py`)
+* Opens a dedicated terminal window for logs and execution output
+
+### Example output
+
+<p align="center">
+  <img src="results/static/gui_launcher.png" alt="ArterialManager Launcher" width="450"/>
+</p>
+
+This interface eliminates the need for terminal commands and provides a clean, user-friendly way to run all pipelines from one place.
+
+---
+
+Then your README continues as before with:
+
+> ## 1. Run the Table Manager (Excel processing) ▶️
+
+---
+
+This version keeps your documentation consistent and clearly explains how to launch the project in one click through the GUI.
+
+
+
+---
 ## 🚀 Features
 
 ### 📊 Table Manager
@@ -109,14 +166,9 @@ ArterialManager/
 **Streamlit Web App**:
 
 ```bash
-streamlit run src/app_streamlit.py
+python -m streamlit run src/app_streamlit.py
 ```
 
-**Tkinter Desktop App**:
-
-```bash
-python src/app_tkinter.py
-```
 
 Inputs: `data/tables/`
 Outputs: `results/master_table/`
@@ -130,13 +182,7 @@ Outputs: `results/master_table/`
 **Streamlit Web App Visualizer**:
 
 ```bash
-streamlit run src/app_plot.py
-```
-
-**Tkinter Desktop App**:
-
-```bash
-python src/app_tkinter.py
+python -m streamlit run src/app_plot.py
 ```
 
 Inputs: `data/tables/`
@@ -162,7 +208,7 @@ bsub < minerva/run_compute_vessel_overlap.sh
 
 **Python script (Minerva):**
 ```bash
-python compute_vessel_overlap.py
+python run_compute_vessel_overlap.py
 ```
 
 

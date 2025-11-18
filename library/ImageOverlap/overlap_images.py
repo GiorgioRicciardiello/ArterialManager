@@ -76,7 +76,8 @@ from typing import Dict, Tuple, List, Optional
 import pandas as pd
 import pickle
 import gzip
-
+from multiprocessing import cpu_count
+import os
 from pathlib import Path
 from joblib import Parallel, delayed
 from library.ImageOverlap.wavelet_overlap import coloc_vessels_with_wbns
@@ -186,6 +187,7 @@ def find_pairs_in_folder(folder_cell: pathlib.Path, path_out: pathlib.Path) -> D
 
 def process_folder(folder_cell:pathlib.Path, path_out:pathlib.Path):
     """Process all pairs inside a folder_cell."""
+    print(f'process_folder: {folder_cell.stem}')
     pairs = find_pairs_in_folder(folder_cell=folder_cell, path_out=path_out)
 
     results = []
@@ -357,7 +359,7 @@ def run_batch_overlap_skip_no_parallel(base_path: Path, path_out: Path):
         else:
             to_process.append(folder)
 
-    print(f"📂 Found {len(all_folders)} folders, processing {len(to_process)} new ones (sequential).")
+    print(f"\n📂 Found {len(all_folders)} folders, processing {len(to_process)} new ones (sequential).")
 
     all_results = []
     for folder_cell in tqdm(to_process, desc="Processing new folders sequentially"):
@@ -379,11 +381,22 @@ def run_batch_overlap_skip_no_parallel(base_path: Path, path_out: Path):
 
 if __name__ == "__main__":
     # %% Define input and output path
-    base_path = CONFIG["paths"]['data'].joinpath('imgs')
-    path_out = CONFIG['paths']['outputs_imgs'].joinpath('overlap_images')
-    # if parallel processing:
-    # run_batch_overlap(base_path, path_out, n_jobs=8)
-    # if sequential processing:
-    run_batch_overlap_skip_no_parallel(base_path, path_out)
+    base_path = CONFIG.get("paths")["local_images"]
+    path_out = CONFIG.get("paths")["local_images_output"].joinpath("processed_overlap")
 
+    # --- choose execution mode ---
+    SEQUENTIAL = True  # set True to force sequential mode (no Parallel)
+
+    # --- determine number of workers ---
+    n_jobs = int(os.environ.get("LSB_DJOB_NUMPROC", 0))
+    if n_jobs <= 0 and not SEQUENTIAL:
+        n_jobs = max(cpu_count() - 4, 1)
+
+    print(f"\n[INFO] Mode: {'SEQUENTIAL' if SEQUENTIAL else 'PARALLEL'}")
+    print(f"[INFO] Using {n_jobs} workers")
+
+    if SEQUENTIAL:
+        run_batch_overlap_skip_no_parallel(base_path, path_out)
+    else:
+        run_batch_overlap(base_path, path_out, n_jobs=n_jobs)
 
