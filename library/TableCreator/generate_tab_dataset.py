@@ -1,3 +1,15 @@
+"""
+The class points to the directory data/tables, where it expects to find for each cell the tables
+- Angiotool.xlsx
+- Cell count.xlsx
+- Sample.xlsx
+
+
+Categorical columns:
+cell type
+condition
+Study Name
+"""
 from config.config import CONFIG
 from pathlib import Path
 import pandas as pd
@@ -5,6 +17,9 @@ from typing import Dict, List, Tuple, Union, Optional
 import re
 from datetime import datetime
 import numpy as np
+import warnings
+
+# from src.olds_test.app_plot import fname
 
 
 class GenerateDataset:
@@ -45,50 +60,221 @@ class GenerateDataset:
 
         # columns that the output will have
         self.cols_formated = list(
-            {'Study Name', 'Sample Name', "Image Name", "Timepoint", 'Timepoint_datetime', "Cell type", "Density", "Cell count",
+            {'Study Name', 'Sample Name', "Image Name", "Timepoint", 'Timepoint_datetime', "Cell type", "Density", "Condition", "Cell count",
              "Vessels Area", "Total Number of Junctions Normalize", "Total Number of Junctions",
              "Junctions Density Normalize", "Junctions Density", "Total Vessels Length Normalize",
              "Total Vessels Length", "Total Number of End Points Normalize", "Total Number of End Points"})
 
 
     def run(self) -> pd.DataFrame:
-        self.tables = self._search_tables()
-        self._format_angiotool()
-        self._format_cellcount()
-        self._format_sample()
-        df_formated = self._generate_formated_cell()
+
+        df_cell_types = self._get_cell_type_files()
+        formated_collection = {}
+        for cell_type in df_cell_types['cell_type'].unique():
+            # cell_type = 'ODQ22'
+            excel_files = df_cell_types[df_cell_types['cell_type'] == cell_type]['file'].tolist()
+            print(f"Processing cell type: {cell_type}")
+            self.tables = self._collect_tables(excel_files=excel_files)
+            self._format_angiotool()
+            self._format_cellcount()
+            self._format_sample()
+            # self._check_typos_columns()
+            df_formated = self._generate_formated_cell()
+            formated_collection[cell_type] = df_formated
+
+        # concatenate in a single table
+        df_formated_merged = pd.concat(formated_collection)
+
+        # Get unique labels from level 0 (in order of appearance)
+        first_level_unique = df_formated_merged.index.get_level_values(0).unique()
+        joined_names = "_".join(first_level_unique)
+
+        df_formated_merged = df_formated_merged.reset_index(drop=False, inplace=False)
+        df_formated_merged = df_formated_merged.rename(columns={'level_0': 'Experiment Name',
+                                           'level_1': 'Experiment Row Idx'})
+        self._save_results(df=df_formated_merged, study_name=joined_names)
         return df_formated
+
+
+    def _check_typos_columns(self, tab_keys=None):
+        """
+        Ensure all tables have the same set of sample_name values.
+        If any table differs, raise ValueError indicating precise differences.
+
+        Parameters
+        ----------
+        tab_keys : list[str] or None
+            If provided, only check these keys (e.g., ['angiotool', 'cell_count', 'sample']).
+            If None, check all keys present in self.tables.
+
+        Raises
+        ------
+        ValueError
+            If sample_name sets differ across tables or sample_name column is missing.
+        """
+
+        # Choose which tables to check
+        if tab_keys is None:
+            keys_to_check = list(self.tables.keys())
+        else:
+            keys_to_check = [k for k in tab_keys if k in self.tables]
+
+        if not keys_to_check:
+            raise ValueError("No tables to check: 'self.tables' is empty or none of the requested keys are present.")
+
+        # Helper: normalize sample_name series -> set
+        def normalize_series_to_set(s: pd.Series) -> set:
+            # Convert to string, strip spaces, lowercase
+            s = s.astype(str).str.strip().str.lower()
+            # Convert the literal "nan" (produced by astype(str)) back to np.nan, then drop
+            s = s.replace({"nan": np.nan})
+            s = s.dropna()
+            # Drop empties
+            s = s[s != ""]
+            return set(s)
+
+        # Build normalized sets per table
+        table_sets = {}
+        for key in keys_to_check:
+            tab = self.tables.get(key)
+            if tab is None:
+                raise ValueError(f"Table '{key}' not found in self.tables.")
+
+            if 'sample_name' not in tab.columns:
+                raise ValueError(f"Table '{key}' is missing required column 'sample_name'.")
+
+            table_sets[key] = normalize_series_to_set(tab['sample_name'])
+
+        # If all sets are equal, we are done
+        sets_list = list(table_sets.values())
+        all_equal = all(s == sets_list[0] for s in sets_list[1:])
+        if all_equal:
+            return  # Success: no differences
+
+        # Otherwise, compute a detailed difference report
+        # Use the union of all names as the reference universe
+        universe = set().union(*sets_list)
+
+        details_lines = []
+        for key, s in table_sets.items():
+            missing = sorted(universe - s)  # present in others, missing here
+            extras = sorted(s - (universe - s))  # unique names only this table has (relative extras)
+
+            # More explicit "extras" relative to *overall* presence:
+            # extras_here = s - set().union(*(table_sets[k2] for k2 in table_sets if k2 != key))
+            extras_here = sorted(
+                s - set().union(*(table_sets[k2] for k2 in table_sets if k2 != key))
+            )
+
+            # Prefer the explicit extras_here (names present only in this table)
+            details_lines.append(
+                f"- Table '{key}':\n"
+                f"    Missing (in others but not here): {missing if missing else 'None'}\n"
+                f"    Extras (only in this table): {extras_here if extras_here else 'None'}"
+            )
+
+        # Additionally, show pairwise differences for precision
+        pairwise_lines = []
+        keys = keys_to_check
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                k1, k2 = keys[i], keys[j]
+                s1, s2 = table_sets[k1], table_sets[k2]
+                only_k1 = sorted(s1 - s2)
+                only_k2 = sorted(s2 - s1)
+                if only_k1 or only_k2:
+                    pairwise_lines.append(
+                        f"  • {k1} vs {k2}:\n"
+                        f"      Only in {k1}: {only_k1 if only_k1 else 'None'}\n"
+                        f"      Only in {k2}: {only_k2 if only_k2 else 'None'}"
+                    )
+
+        raise ValueError(
+            "Mismatch in 'sample_name' sets across tables.\n\n"
+            "Per-table differences:\n"
+            + "\n".join(details_lines)
+            + ("\n\nPairwise differences:\n" + "\n".join(pairwise_lines) if pairwise_lines else ""))
+
+
+
+    def _get_cell_type_files(self) -> pd.DataFrame:
+        """
+        Retrieves and processes a list of Excel files within a specified directory, categorizing them
+        by cell types and conditions. Ensures that each cell type corresponds to exactly three distinct
+        conditions.
+
+        :raises FileNotFoundError: If no Excel files are found in the specified directory.
+        :raises ValueError: If any cell type does not have exactly three distinct conditions.
+
+        :return: A pandas DataFrame containing the processed list of files with columns for cell type,
+                 condition, file path, and normalized condition names.
+        :rtype: pandas.DataFrame
+        """
+        excel_files = [
+            f for f in self.path_tables.glob("*")
+            if f.suffix.lower() in [".xls", ".xlsx"]
+        ]
+
+        if not excel_files:
+            raise FileNotFoundError(f"No Excel files found in {self.path_tables}")
+
+        # we can have the 3 files for multiple experiments, they are names as e.g., ODQ21 .., JC7 ...
+        cell_types = [[file.name.partition(' ')[0],file.name.partition(' ')[2], file]  for file in excel_files]
+        df_cell_types = pd.DataFrame(cell_types, columns=['cell_type', 'condition', 'file'])
+
+        # Normalize condition names to avoid case/spacing mismatches
+        df_norm = df_cell_types.copy()
+        df_norm['condition_norm'] = (
+            df_norm['condition'].astype(str).str.strip().str.lower()
+        )
+
+        # Count distinct conditions per cell_type
+        cond_counts = (
+            df_norm.groupby('cell_type')['condition_norm']
+            .nunique()
+            .reset_index(name='n_unique_conditions')
+        )
+
+        # Raise if any cell_type does not have exactly 3 distinct conditions
+        offenders = cond_counts[cond_counts['n_unique_conditions'] != 3]
+        if not offenders.empty:
+            details = (
+                df_norm.groupby(['cell_type', 'condition_norm'])
+                .size()
+                .reset_index(name='n_files')
+                .sort_values(['cell_type', 'condition_norm'])
+            )
+            raise ValueError(
+                "Each cell_type must have exactly 3 distinct conditions (angiotools, cell count and sample). \n"
+                "You are missing a file(s)\n\n"
+                f"Offending cell_types:\n{offenders.to_string(index=False)}\n\n"
+                f"Details per condition:\n{details.to_string(index=False)}"
+            )
+        return df_cell_types
 
     # -------------------------------
     # STEP 1: SEARCH TABLES
     # -------------------------------
-    def _search_tables(self) -> Dict[str, List[pd.DataFrame]]:
+    def _collect_tables(self, excel_files:List[Path]) -> Dict[str, pd.DataFrame]:
         """
-        Search for specific Excel tables in a folder and load them into DataFrames.
+        Collect the the tables from the specific cell type and store them a Dict of DataFrames.
 
+        :param excel_files: List of Excel files to search for tables.
 
-        Sample frame: Sample name	Cell line	Sample density
-        cell count frame: File	Cells
-        angiotool: multi columns header
-        Parameters
-        ----------
-        path_tables : Path
-            Directory containing Excel files.
-
-        Returns
         -------
         Dict[str, pd.DataFrame]
             Dictionary with keys ('angiotool', 'cell_count', 'sample')
             and corresponding DataFrames if found, else None.
         """
         tables = {k: None for k in self.keywords}
-        excel_files = list(self.path_tables.glob("*.xls*"))
 
         if not excel_files:
             raise FileNotFoundError(f"No Excel files found in {self.path_tables}")
 
         for file in excel_files:
             fname = file.name.lower()
+            print(fname)
+
             for key, kw in self.keywords.items():
                 if kw in fname:
                     try:
@@ -137,11 +323,11 @@ class GenerateDataset:
 
         df = self.tables.get(key_tab)
         if df is None or df.empty:
-            raise ValueError("❌ AngioTool table is empty or missing.")
+            raise ValueError("AngioTool table is empty or missing.")
 
         # Ensure enough rows for header
         if len(df) < 4:
-            raise ValueError("❌ AngioTool table does not contain enough rows.")
+            raise ValueError("AngioTool table does not contain enough rows.")
 
 
         # Reset headers
@@ -151,7 +337,7 @@ class GenerateDataset:
 
         # Validate required column
         if "Image Name" not in df.columns:
-            raise KeyError("❌ Column 'Image Name' missing in AngioTool table.")
+            raise KeyError("Column 'Image Name' missing in AngioTool table.")
 
         # 2. Create the col_time_point columns
         df[col_time_point] = df["Image Name"].apply(_get_time_point_from_name)
@@ -230,10 +416,10 @@ class GenerateDataset:
         """
         df = self.tables.get(key_tab_cell_count)
         if df is None or df.empty:
-            raise ValueError("❌ Cell count table is empty or missing.")
+            raise ValueError("Cell count table is empty or missing.")
 
         if "File" not in df.columns:
-            raise KeyError("❌ Column 'File' missing in Cell Count table.")
+            raise KeyError("Column 'File' missing in Cell Count table.")
 
         df["sample_name"] = df["File"].apply(self._get_cell_name)
         self.tables[key_tab_cell_count] = df
@@ -245,11 +431,11 @@ class GenerateDataset:
         """
         df = self.tables.get(self.key_tab_sample)
         if df is None or df.empty:
-            raise ValueError("❌ Sample table is empty or missing.")
+            raise ValueError("Sample table is empty or missing.")
 
         if "Sample name" not in df.columns:
-            raise KeyError("❌ Column 'Sample name' missing in Sample table.")
-
+            raise KeyError("Column 'Sample name' missing in Sample table.")
+        df["Sample name"] = df["Sample name"].replace(' ', '')
         self.tables[self.key_tab_sample] = df.rename(columns={"Sample name": "sample_name"})
 
 
@@ -259,14 +445,48 @@ class GenerateDataset:
     def _generate_formated_cell(self) -> pd.DataFrame :
         """
         Merge the three different table sourcs into a single table and compute normalizations
+        It also saves the table with the pre-specified columns
         :return:
         """
+
+        angiotool = set(self.tables[self.key_tab_angiotool]['sample_name'])
+        cellcount = set(self.tables[self.key_tab_cell_count]['sample_name'])
+
+        # Symmetric difference: elements found in exactly one set (not both)
+        diff = angiotool ^ cellcount
+
+        if len(diff) > 0:
+            missing_in_angiotool = cellcount - angiotool
+            missing_in_cellcount = angiotool - cellcount
+            warnings.warn(
+                "Sample name mismatch between Angiotool and Cell count.\n"
+                f"Missing in Angiotool: {sorted(missing_in_angiotool)}\n"
+                f"Missing in Cell count: {sorted(missing_in_cellcount)}",
+                category=UserWarning,
+                stacklevel=2
+            )
+
         df = pd.merge(
             left=self.tables[self.key_tab_cell_count],
             right=self.tables[self.key_tab_angiotool],
             on="sample_name",
             how="right",
         )
+
+        sample = set(self.tables[self.key_tab_sample]['sample_name'])
+        out  = set(df['sample_name'])
+        diff = sample ^ out
+        if len(diff) > 0:
+            missing_in_sample = out - sample
+            missing_in_out = sample - out
+            warnings.warn(
+                "Sample name mismatch between Final Frame and Sample.\n"
+                f"Missing in Angiotool: {sorted(missing_in_sample)}\n"
+                f"Missing in Cell count: {sorted(missing_in_out)}",
+                category=UserWarning,
+                stacklevel=2
+            )
+
 
         df = pd.merge(
             left=df,
@@ -293,9 +513,16 @@ class GenerateDataset:
                 "Cell line": "Cell type",
                 "Cells": "Cell count",
                 "Sample density": "Density",
+                "Sample condition": "Condition"
             },
             inplace=True,
         )
+        # create columns if missing, not all the sample columns are the same, we can have density of condition
+        if 'Density' not in df.columns:
+            df['Density'] = np.nan
+
+        if 'Condition' not in df.columns:
+            df['Condition'] = np.nan
 
         df = df[self.cols_formated]
         self._save_results(df)
@@ -304,10 +531,14 @@ class GenerateDataset:
     # -------------------------------
     # STEP 6: SAVE TO EXCEL
     # -------------------------------
-    def _save_results(self, df: pd.DataFrame) -> None:
+    def _save_results(self, df: pd.DataFrame,
+                      study_name: str = None) -> None:
+        if study_name is None:
+            study_name = self.study_name
+
         timestamp = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         file_path = self.output_path.joinpath(
-            f"{self.study_name} Angiotools Formated {timestamp}.xlsx"
+            f"{study_name} Angiotools Formated {timestamp}.xlsx"
         )
 
         try:
@@ -342,13 +573,17 @@ class GenerateDataset:
                 # Freeze header row
                 worksheet.freeze_panes(1, 0)
 
-            print(f"✅ Formatted Table for Study {self.study_name} saved at:\n\t{file_path}")
+            print(f"✅ Formatted Table for Study {study_name} saved at:\n\t{file_path}")
         except PermissionError:
-            print(f"❌ Could not save file. It might be open in Excel: {file_path}")
+            print(f"Could not save file. It might be open in Excel: {file_path}")
 
 
 if __name__ == "__main__":
-    generator = GenerateDataset(path_tables=CONFIG.get('paths')['path_tables'],
-                                output_path=CONFIG.get('paths')['outputs_tabs'])
+    # generator = GenerateDataset(path_tables=CONFIG.get('paths')['path_tables'],
+    #                             output_path=CONFIG.get('paths')['outputs_tabs'])
+
+    generator = GenerateDataset(path_tables=CONFIG.get('paths')['data'].joinpath('sample_tab'),
+                                output_path=CONFIG.get('paths')['data'].joinpath('sample_tab_output'))
+
 
     df = generator.run()

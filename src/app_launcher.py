@@ -83,8 +83,9 @@ PATHS = {
 }
 
 # Adjust this path if Anaconda is installed elsewhere
-CONDA_PROMPT = r"C:\ProgramData\anaconda3\Scripts\activate.bat"
-ENV_NAME = "imgai"
+# CONDA_PROMPT = r"C:\ProgramData\anaconda3\Scripts\activate.bat"
+CONDA_PROMPT = r"C:\Users\riccig01\anaconda3\Scripts\activate.bat"
+ENV_NAME = "imgai_env"
 # python -m streamlit run src/app_launcher.py
 
 # def run_conda_in_terminal(app_name):

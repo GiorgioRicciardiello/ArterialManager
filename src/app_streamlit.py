@@ -42,16 +42,14 @@ if st.button("Run Pipeline 🚀"):
                              reverse=True)
 
         if excel_files:
-            excel_file = excel_files[0]
-            with open(excel_file, "rb") as f:
-                st.download_button(
-                    "⬇️ Download Excel Result",
-                    f,
-                    file_name=excel_file.name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            for excel_file in excel_files:
+                with open(excel_file, "rb") as f:
+                    st.download_button(
+                        f"⬇️ Download {excel_file.stem}",
+                        f,
+                        file_name=excel_file.name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-
-
