@@ -8,6 +8,13 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import math
 import matplotlib.ticker as ticker
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
+import plotly.colors as pcolors
+
+
 
 def prettify_label(label: str) -> str:
     """
@@ -83,6 +90,157 @@ def plot_with_sem(df, x, y, hue=None):
     )
     return fig
 
+
+def plot_grouped_data_interactive(df:pd.DataFrame,
+                                  cat_col1: str = 'Cell type',
+                                  cat_col2: str = 'Condition',
+                                  y_col: str = 'Vessels Area Normalize',
+                                  x_col: str = 'Timepoint_datetime',
+                                  add_trend_line=False):
+    """
+    Interactive Plotly version of plot_grouped_data_with_optional_trend.
+    """
+    # Clean Data
+    plot_df = df.copy()
+
+    # Handle Datetime X-Axis (Convert to Numbers for Plotting/Regression)
+    x_plot_col = 'x_numeric_seconds'
+    is_datetime = pd.api.types.is_datetime64_any_dtype(plot_df[x_col])
+
+    if is_datetime:
+        start_time = plot_df[x_col].min()
+        plot_df[x_plot_col] = (plot_df[x_col] - start_time).dt.total_seconds()
+    else:
+        plot_df[x_plot_col] = plot_df[x_col]
+
+    # Grouping
+    unique_groups = sorted(plot_df[cat_col1].unique())
+    unique_conditions = sorted(plot_df[cat_col2].unique())
+
+    # Layout calc: Fit on screen
+    # Try to use up to 3 columns to reduce height
+    max_cols = 3
+    n_cols = min(len(unique_groups), max_cols)
+    n_rows = (len(unique_groups) + n_cols - 1) // n_cols
+
+    titles = [str(g) for g in unique_groups]
+
+    # Shared axes allow for better comparison and cleaner look
+    fig = make_subplots(
+        rows=n_rows, cols=n_cols,
+        subplot_titles=titles,
+        shared_yaxes=True,  # Critical for comparison
+        shared_xaxes=True,  # Reduces clutter
+        vertical_spacing=0.1,
+        horizontal_spacing=0.05
+    )
+
+    # Color palette (Set1 match)
+    colors = pcolors.qualitative.Set1
+    color_map = {cond: colors[i % len(colors)] for i, cond in enumerate(unique_conditions)}
+
+    # Aggregation
+    agg_df = plot_df.groupby([cat_col1, cat_col2, x_plot_col, x_col])[y_col].agg(['mean', 'std']).reset_index()
+
+    for i, group in enumerate(unique_groups):
+        row = (i // n_cols) + 1
+        col = (i % n_cols) + 1
+
+        group_data = agg_df[agg_df[cat_col1] == group]
+
+        for condition in unique_conditions:
+            cond_data = group_data[group_data[cat_col2] == condition]
+            if cond_data.empty:
+                continue
+
+            c = color_map[condition]
+
+            # 1. Error Bars + Points
+            fig.add_trace(
+                go.Scatter(
+                    x=cond_data[x_col],
+                    y=cond_data['mean'],
+                    error_y=dict(
+                        type='data',
+                        array=cond_data['std'],
+                        visible=True,
+                        thickness=1.5,
+                        width=3,
+                        color=c
+                    ),
+                    mode='markers',
+                    marker=dict(
+                        color=c,
+                        size=8,
+                        line=dict(width=1, color='white')  # Professional touch
+                    ),
+                    name=str(condition),
+                    legendgroup=str(condition),
+                    showlegend=(i == 0)  # Only show legend once
+                ),
+                row=row, col=col
+            )
+
+            # 2. Trend Line (Linear)
+            if add_trend_line:
+                raw_cond_data = plot_df[(plot_df[cat_col1] == group) & (plot_df[cat_col2] == condition)]
+
+                if len(raw_cond_data) > 1:
+                    x_nums = raw_cond_data[x_plot_col]
+                    y_vals = raw_cond_data[y_col]
+
+                    # Remove NaNs
+                    valid_mask = ~np.isnan(x_nums) & ~np.isnan(y_vals)
+                    if valid_mask.sum() > 1:
+                        z = np.polyfit(x_nums[valid_mask], y_vals[valid_mask], 1)
+                        p = np.poly1d(z)
+
+                        # Generate trend line points coverage
+                        x_range_nums = np.linspace(x_nums.min(), x_nums.max(), 50)
+
+                        if is_datetime:
+                            x_trend = [start_time + pd.Timedelta(seconds=val) for val in x_range_nums]
+                        else:
+                            x_trend = x_range_nums
+
+                        y_trend = p(x_range_nums)
+
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_trend,
+                                y=y_trend,
+                                mode='lines',
+                                line=dict(color=c, width=2, dash='solid'),  # Solid or dash
+                                name=f"{condition} Trend",
+                                legendgroup=str(condition),
+                                showlegend=False,
+                                hoverinfo='skip',
+                                opacity=0.8
+                            ),
+                            row=row, col=col
+                        )
+
+    # Professional Styling
+    fig.update_layout(
+        height=300 * n_rows,  # Compact height
+        template="plotly_white",
+        font=dict(family="Arial", size=12, color="black"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,  # Place above plots to save vertical space? Or bottom?
+            xanchor="center",
+            x=0.5
+        ),
+        margin=dict(l=50, r=20, t=60, b=50),  # Tighter margins
+        # Uniform axes style
+    )
+
+    # Improve grids
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E5E5E5', linecolor='black')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E5E5E5', linecolor='black')
+
+    return fig
 
 
 
@@ -241,39 +399,41 @@ def plot_grouped_data_with_optional_trend(df: pd.DataFrame,
 
     plt.show()
 
+# if __name__ == "__main__":
+#     path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
+#
+#     # Find the first file that starts with 'OD2.1' and ends with .xlsx
+#     matches = list(path.glob('ODQ2.1*.xlsx'))
+#     if not matches:
+#         raise FileNotFoundError("No .xlsx files starting with 'OD2.1' found in the folder.")
+#
+#     # If there may be multiple, pick the most recently modified:
+#     file_to_read = max(matches, key=lambda p: p.stat().st_mtime)
+#
+#     df = pd.read_excel(file_to_read)
+#     cols = ['Cell type', 'Condition', 'Timepoint', 'Timepoint_datetime', 'Vessels Area Normalize']
+#     df_plot = df[cols]
+#
+#     sns.set(style="whitegrid")
+#
+#     group_a = 'Cell type'
+#     group_b = 'Condition'
+#     x_axis = 'Timepoint_datetime'
+#     y_axis = 'Vessels Area Normalize'
+#
+#
+#     # # Call the function with your desired columns
+#     plot_grouped_data_with_optional_trend(
+#         df=df_plot,
+#         cat_col1=group_b,       # Plots separate graphs for Condition
+#         cat_col2=group_a,       # Plots separate colors for Cell Type
+#         y_col=y_axis,
+#         x_col=x_axis,
+#         add_trend_line=True,
+#         font_scale=1.2,         # <--- Change this float to resize fonts (e.g. 0.8 or 1.5)
+#         title="Vessel Area Over Time",
+#         save_path=None
+#     )
+#
+#
 
-if __name__ == "__main__":
-    path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
-
-    # Find the first file that starts with 'OD2.1' and ends with .xlsx
-    matches = list(path.glob('ODQ2.1*.xlsx'))
-    if not matches:
-        raise FileNotFoundError("No .xlsx files starting with 'OD2.1' found in the folder.")
-
-    # If there may be multiple, pick the most recently modified:
-    file_to_read = max(matches, key=lambda p: p.stat().st_mtime)
-
-    df = pd.read_excel(file_to_read)
-    cols = ['Cell type', 'Condition', 'Timepoint', 'Timepoint_datetime', 'Vessels Area Normalize']
-    df_plot = df[cols]
-
-    sns.set(style="whitegrid")
-
-    group_a = 'Cell type'
-    group_b = 'Condition'
-    x_axis = 'Timepoint_datetime'
-    y_axis = 'Vessels Area Normalize'
-
-
-    # # Call the function with your desired columns
-    plot_grouped_data_with_optional_trend(
-        df=df_plot,
-        cat_col1=group_b,       # Plots separate graphs for Condition
-        cat_col2=group_a,       # Plots separate colors for Cell Type
-        y_col=y_axis,
-        x_col=x_axis,
-        add_trend_line=True,
-        font_scale=1.2,         # <--- Change this float to resize fonts (e.g. 0.8 or 1.5)
-        title="Vessel Area Over Time",
-        save_path=None
-    )
