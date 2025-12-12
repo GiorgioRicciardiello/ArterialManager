@@ -49,6 +49,10 @@ class GenerateDataset:
         self.key_tab_angiotool:str = 'angiotool'
         self.key_tab_sample:str = 'sample'
 
+        self.col_time_point = 'Timepoint'
+        self.col_study_name = 'Study Name'
+        self.well_id = 'well_id'
+
         self.tables: Dict[str, pd.DataFrame] = {}
 
         # cols to normalize by cell count
@@ -59,11 +63,13 @@ class GenerateDataset:
                      'Total Number of End Points']
 
         # columns that the output will have
-        self.cols_formated = list(
-            {'Study Name', 'Sample Name', "Image Name", "Timepoint", 'Timepoint_datetime', "Cell type", "Density", "Condition", "Cell count",
-             "Vessels Area", "Total Number of Junctions Normalize", "Total Number of Junctions",
-             "Junctions Density Normalize", "Junctions Density", "Total Vessels Length Normalize",
-             "Total Vessels Length", "Total Number of End Points Normalize", "Total Number of End Points"})
+        self.cols_formated = ['Study Name', 'Sample Name', self.well_id, "Image Name",
+                              self.col_time_point, f'{self.col_time_point}_datetime',
+                              "Cell type", "Density", "Condition", "Cell count",
+                              "Vessels Area", "Total Number of Junctions Normalize", "Total Number of Junctions",
+                              "Junctions Density Normalize", "Junctions Density", "Total Vessels Length Normalize",
+                              "Total Vessels Length", "Total Number of End Points Normalize",
+                              "Total Number of End Points"]
 
 
     def run(self) -> pd.DataFrame:
@@ -300,26 +306,6 @@ class GenerateDataset:
         - Drop the rows above it
         Create the pivot column sample_name to pivot with the other tables
         """
-        def _get_time_point_from_name(x: str) -> str:
-            """
-            Extract time point from image filename.
-            Example: 'JC3_A1_1_00d07h32m.tif_green.jpg' -> '00d07h32m'
-            """
-            # safer with regex: look for pattern like 00d07h32m
-            match = re.search(r"\d{2}d\d{2}h\d{2}m", x)
-            if match:
-                return match.group(0)
-            return ""
-
-        def _get_study_name_from_name(x: str) -> str:
-            """
-            Extract study name from filename.
-            Example: 'JC3_A1_1_00d07h32m.tif_green.jpg' -> 'JC3'
-            """
-            return x.split("_")[0] if "_" in x else x
-
-        col_time_point = 'Timepoint'
-        col_study_name = 'Study Name'
 
         df = self.tables.get(key_tab)
         if df is None or df.empty:
@@ -340,26 +326,16 @@ class GenerateDataset:
             raise KeyError("Column 'Image Name' missing in AngioTool table.")
 
         # 2. Create the col_time_point columns
-        df[col_time_point] = df["Image Name"].apply(_get_time_point_from_name)
+        df[self.col_time_point] = df["Image Name"].apply(self._get_time_point_from_name)
 
         # --- Create datetime version of the timepoint ---
-        def _convert_timepoint_to_datetime(tp: str) -> Optional[datetime]:
-            """
-            Convert strings like '00d07h32m' into datetime objects (days, hours, minutes).
-            Returns None if the format is invalid.
-            """
-            match = re.match(r"(\d{2})d(\d{2})h(\d{2})m", tp)
-            if match:
-                days, hours, minutes = map(int, match.groups())
-                return datetime(2000, 1, 1) + pd.Timedelta(days=days, hours=hours, minutes=minutes)
-            return pd.NaT
 
-        df["Timepoint_datetime"] = df[col_time_point].apply(_convert_timepoint_to_datetime)
+        df[f"{self.col_time_point}_datetime"] = df[self.col_time_point].apply(self._convert_timepoint_to_datetime)
 
         # Get the study name
 
         # Get the study name
-        df[col_study_name] = df["Image Name"].apply(_get_study_name_from_name)
+        df[self.col_study_name] = df["Image Name"].apply(self._get_study_name_from_name)
 
         # Ensure consistent study name
         self.study_name = df["Study Name"].unique()
@@ -389,6 +365,40 @@ class GenerateDataset:
         self.tables[key_tab] = df
 
     @staticmethod
+    def _convert_timepoint_to_datetime(tp: str) -> Optional[datetime]:
+        """
+        Convert strings like '00d07h32m' into datetime objects (days, hours, minutes).
+        Returns None if the format is invalid.
+        """
+        match = re.match(r"(\d{2})d(\d{2})h(\d{2})m", tp)
+        if match:
+            days, hours, minutes = map(int, match.groups())
+            return datetime(2000, 1, 1) + pd.Timedelta(days=days, hours=hours, minutes=minutes)
+        return pd.NaT
+
+
+    @staticmethod
+    def _get_time_point_from_name(x: str) -> str:
+        """
+        Extract time point from image filename.
+        Example: 'JC3_A1_1_00d07h32m.tif_green.jpg' -> '00d07h32m'
+        """
+        # safer with regex: look for pattern like 00d07h32m
+        match = re.search(r"\d{2}d\d{2}h\d{2}m", x)
+        if match:
+            return match.group(0)
+        return ""
+
+    @staticmethod
+    def _get_study_name_from_name(x: str) -> str:
+        """
+        Extract study name from filename.
+        Example: 'JC3_A1_1_00d07h32m.tif_green.jpg' -> 'JC3'
+        """
+        return x.split("_")[0] if "_" in x else x
+
+
+    @staticmethod
     def _get_cell_name(x: str) -> str:
         """
         Extract cell name by cutting right before the timepoint (XXdXXhXXm).
@@ -410,6 +420,7 @@ class GenerateDataset:
         """
         Format the cell count tables with columns:
                 | File	| Cells
+        We need to extract the time of the image so we can later merge with the Angiotool
         Creates the sample_name pivot column for the merge
         :param key_tab_cell_count:
         :return:
@@ -422,6 +433,14 @@ class GenerateDataset:
             raise KeyError("Column 'File' missing in Cell Count table.")
 
         df["sample_name"] = df["File"].apply(self._get_cell_name)
+
+        #  Create the col_time_point columns
+        df[self.col_time_point] = df["File"].apply(self._get_time_point_from_name)
+
+        # --- Create datetime version of the timepoint ---
+        df[f"{self.col_time_point}_datetime"] = df[self.col_time_point].apply(self._convert_timepoint_to_datetime)
+
+
         self.tables[key_tab_cell_count] = df
 
     def _format_sample(self):
@@ -466,12 +485,34 @@ class GenerateDataset:
                 stacklevel=2
             )
 
+        df_ang = self.tables[self.key_tab_angiotool].copy()
+        # df_ang.sort_values(by=[self.col_study_name, 'sample_name', self.col_time_point], inplace=True)
+        df_ang_count = df_ang.groupby(by=[self.col_study_name, 'sample_name']).count()
+
+        # df_cell = self.tables[self.key_tab_cell_count].copy()
+
         df = pd.merge(
-            left=self.tables[self.key_tab_cell_count],
-            right=self.tables[self.key_tab_angiotool],
-            on="sample_name",
-            how="right",
+            left=self.tables[self.key_tab_angiotool],
+            right=self.tables[self.key_tab_cell_count],
+            # on=["sample_name", self.col_time_point],
+            on=["sample_name"],
+            how="left",
         )
+        col_drop = [col for col in df.columns if col.endswith('_y')]
+        df = df.drop(columns=col_drop)
+        col_rename = {col: col.replace('_x', '') for col in df.columns if col.endswith('_x')}
+        df = df.rename(columns=col_rename)
+
+        df_count = df.groupby(by=[self.col_study_name, 'sample_name']).count()
+
+        # Compare counts of each DataFrame by Study Name and Sample Name. Otherwise, we have duplicates in the merge
+        df_ang_count_grouped = df_ang_count.groupby(['Study Name', 'sample_name']).size()
+        df_count_grouped = df_count.groupby(['Study Name', 'sample_name']).size()
+
+        if df_ang_count_grouped.equals(df_count_grouped):
+            print("The counts match between both DataFrames.")
+        else:
+            print("The counts do not match. Investigate further.")
 
         sample = set(self.tables[self.key_tab_sample]['sample_name'])
         out  = set(df['sample_name'])
@@ -487,7 +528,7 @@ class GenerateDataset:
                 stacklevel=2
             )
 
-
+        # df_sample = self.tables[self.key_tab_sample].copy()
         df = pd.merge(
             left=df,
             right=self.tables[self.key_tab_sample],
@@ -524,8 +565,16 @@ class GenerateDataset:
         if 'Condition' not in df.columns:
             df['Condition'] = np.nan
 
+        df = self._get_well_id(df)
         df = df[self.cols_formated]
+
+        df = df.sort_values(by=[self.col_study_name, self.col_time_point])
+
         self._save_results(df)
+        return df
+
+    def _get_well_id(self, df: pd.DataFrame) -> pd.DataFrame:
+        df[self.well_id] = df['Sample Name'].str.extract(r'_(?=[A-H])([A-H]\d{1,2})_')[0]
         return df
 
     # -------------------------------

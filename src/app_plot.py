@@ -6,6 +6,7 @@ import json
 import time
 from pathlib import Path
 import sys
+import uuid
 
 # Add project root (ArterialManager) to Python path
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -51,11 +52,11 @@ with st.sidebar:
         hue = None
 
     st.header("3️⃣ Options")
-    aggregate = st.checkbox("Aggregate replicates (mean ± SEM)", value=False)
+    show_sem = st.checkbox("Aggregate replicates (mean ± SEM)", value=False)
     add_trend = st.checkbox("Add linear trendline", value=False)
 
 # --- DATA PREP ---
-if aggregate:
+if show_sem:
     df_plot = aggregate_replicates(df, x, y, hue)
 else:
     df_plot = df.copy()
@@ -63,7 +64,7 @@ else:
 # --- PLOT ---
 st.subheader("📊 Plot Preview")
 
-if aggregate:
+if show_sem:
     fig = plot_with_sem(df_plot, x, y, hue)
 else:
     import plotly.express as px
@@ -75,7 +76,8 @@ else:
         yaxis_title=prettify_label(y),
     )
 
-st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False}, 
+                key=f"plot_{uuid.uuid4()}")
 
 # --- EXPORT ---
 st.divider()
@@ -86,7 +88,7 @@ fname = st.text_input("Base filename", value=f"plot_{int(time.time())}")
 meta = {
     "timestamp": datetime.utcnow().isoformat() + "Z",
     "x": x, "y": y, "hue": hue,
-    "aggregate": aggregate,
+    "show_sem": show_sem,
     "title": title,
     "source_file": getattr(file, "name", "unknown"),
 }
