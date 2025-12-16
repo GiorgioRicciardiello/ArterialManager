@@ -1,6 +1,8 @@
 import pandas as pd
 from pathlib import Path
 from  typing import List
+import re
+
 
 def make_ml_feature_table(path_in: str | Path,
                             path_out: str | Path,
@@ -62,6 +64,16 @@ def make_ml_feature_table(path_in: str | Path,
         df["img_path"] = img_paths
         return df
 
+    # include the outcome, based on the file name
+    def get_outcome(path: str) -> str:
+        """
+        The outcome is the parent folder name without numbers or underscores.
+        ['AD', 'APOE', 'CAD', 'CONTROL', 'CVD', 'PSP']
+        """
+        path = Path(path)
+        name = path.parents[1].name.split(' ')[0]
+        return re.sub(r"[\d_-]+", "", name)
+
     path_in, path_out = Path(path_in), Path(path_out)
 
     if path_out.exists() and not overwrite:
@@ -94,45 +106,68 @@ def make_ml_feature_table(path_in: str | Path,
                             img_suffix=img_suffix
                             )
 
+
+    wide["outcome"] = wide["img_path"].apply(get_outcome)
+
     # save output
     wide.to_excel(path_out, index=False)
     print(f"✅ ML feature table saved to {path_out}")
     return wide
 
-def summarize_ml_features(df: pd.DataFrame, features:List[str]) -> pd.DataFrame:
+
+
+
+
+def summarize_ml_features(
+    df: pd.DataFrame,
+    features: List[str],
+    outcome_col: str
+) -> pd.DataFrame:
     """
-    Compute first-order statistics for each numeric feature column in an ML table.
+    Compute first-order statistics for numeric ML features,
+    grouped by outcome class.
 
     Parameters
     ----------
     df : pd.DataFrame
         Wide-format ML feature table (one row per sample).
+    features : list of str
+        Feature columns to summarize.
+    outcome_col : str
+        Column name containing outcome labels (categorical).
 
     Returns
     -------
     pd.DataFrame
-        Summary statistics for each numeric feature:
-        [nan_count, mean, median, std, min, max, skew].
+        Summary statistics per feature and outcome:
+        [outcome, feature, count, nan_count, mean, median, std, min, max, skew].
     """
+
     stats = []
-    numeric_df = df[features]
 
-    for col in numeric_df.columns:
-        s = numeric_df[col]
-        desc = {
-            "feature": col,
-            "count": s.count(),
-            "nan_count": s.isna().sum(),
-            "mean": s.mean(),
-            "median": s.median(),
-            "std": s.std(),
-            "min": s.min(),
-            "max": s.max(),
-            "skew": s.skew()
-        }
-        stats.append(desc)
+    for outcome, df_out in df.groupby(outcome_col):
+        numeric_df = df_out[features]
 
-    stats_df = pd.DataFrame(stats)
-    stats_df = stats_df.sort_values(by="feature").reset_index(drop=True)
+        for col in numeric_df.columns:
+            s = numeric_df[col]
+            stats.append({
+                "outcome": outcome,
+                "feature": col,
+                "count": s.count(),
+                "nan_count": s.isna().sum(),
+                "mean": s.mean(),
+                "median": s.median(),
+                "std": s.std(),
+                "min": s.min(),
+                "max": s.max(),
+                "skew": s.skew()
+            })
+
+    stats_df = (
+        pd.DataFrame(stats)
+        .sort_values(["outcome", "feature"])
+        .reset_index(drop=True)
+    )
+
     return stats_df
 

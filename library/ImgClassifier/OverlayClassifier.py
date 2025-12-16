@@ -492,9 +492,10 @@ if __name__ == "__main__":
         path_out=CONFIG.get('paths')['data'].joinpath(r"features_imgs\ImgfeaturesWide.xlsx"),
         id_col="cell",
         path_imgs=CONFIG.get('paths')['local_images_output'].joinpath('processed_overlap'),
-        overwrite=False
+        overwrite=True
     )
-    id_cols = ['cell', 'significant_overlap_absolute', 'img_path']
+    id_cols = ['cell', 'significant_overlap_absolute', 'img_path', 'outcome']
+    outcome = 'outcome'
     # %% Define feature columns
     col_features = [col for col in df.columns if (not df[col].isna().any()) and (col not in id_cols)]
 
@@ -518,7 +519,9 @@ if __name__ == "__main__":
         best_k = 10
 
     # %% Gets stats
-    df_stats = summarize_ml_features(df, features=col_features)
+    df_stats = summarize_ml_features(df,
+                                     features=col_features,
+                                     outcome_col=outcome)
     # drop nans
     df_features = df[col_features]
 
@@ -547,8 +550,6 @@ if __name__ == "__main__":
             features=col_features,
             img_path_col="img_path"
         )
-
-        interactive_umap_viewer(results)
 
 
     def interactive_umap_viewer(results, img_path_col="img_path", image_size=128):

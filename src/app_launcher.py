@@ -140,7 +140,7 @@ def run_conda_in_terminal(app_name):
 
 def open_html_viewer():
     """Open HTML viewer directly."""
-    html_path = PATHS["4️⃣ Overlay Viewer (HTML)"]
+    html_path = PATHS["Overlay Viewer (HTML)"]
     if not html_path.exists():
         messagebox.showerror("Error", f"HTML file not found:\n{html_path}")
         return

@@ -33,6 +33,8 @@ CONFIG = {
         'local_images':  Path(r'C:\Users\riccig01\Documents\SameContrast'),
         'local_images_output': Path(r'C:\Users\riccig01\Documents'),
 
+        'results': ROOT_PATH / "results",
+
     },
     "green_img": {
         "param": {}

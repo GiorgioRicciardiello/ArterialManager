@@ -98,7 +98,21 @@ def plot_grouped_data_interactive(df:pd.DataFrame,
                                   x_col: str = 'Timepoint_datetime',
                                   add_trend_line=False):
     """
-    Interactive Plotly version of plot_grouped_data_with_optional_trend.
+        Interactive Plotly version of plot_grouped_data_with_optional_trend.
+
+    Plots interactive data grouped by two categorical columns, supporting error bars and optional trend lines.
+
+    The function organizes the data into subplots, grouping by `cat_col1` and differentiating series
+    within each subplot by `cat_col2`. Each plot includes error bars and points for visualization,
+    with the option to add trend lines for the grouped data.
+
+    :param df: The input dataframe containing the data to be visualized.
+    :param cat_col1: The primary categorical column for grouping subplots.
+    :param cat_col2: The secondary categorical column for series differentiation within subplots.
+    :param y_col: The column representing the dependent variable to be plotted on the y-axis.
+    :param x_col: The column representing the independent variable to be plotted on the x-axis.
+    :param add_trend_line: Whether to include trend lines for each grouped series (default is False).
+    :return: A Plotly `Figure` object containing the interactive grouped plot.
     """
     # Clean Data
     plot_df = df.copy()
@@ -129,8 +143,8 @@ def plot_grouped_data_interactive(df:pd.DataFrame,
     fig = make_subplots(
         rows=n_rows, cols=n_cols,
         subplot_titles=titles,
-        shared_yaxes=True,  # Critical for comparison
-        shared_xaxes=True,  # Reduces clutter
+        shared_yaxes=False,
+        shared_xaxes=True,  # alligned with time
         vertical_spacing=0.1,
         horizontal_spacing=0.05
     )
@@ -224,7 +238,7 @@ def plot_grouped_data_interactive(df:pd.DataFrame,
     fig.update_layout(
         height=300 * n_rows,  # Compact height
         template="plotly_white",
-        font=dict(family="Arial", size=12, color="black"),
+        font=dict(family="Arial", size=12, color="white"),
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -387,7 +401,7 @@ def plot_grouped_data_with_optional_trend(df: pd.DataFrame,
 
     # Add Main Title
     if title:
-        fig.suptitle(title, fontsize=16 * font_scale, y=1.02)
+        fig.suptitle(title, fontsize=16 * font_scale, y=0.988)
 
     # Adjust layout
     plt.tight_layout(rect=[0, 0.05, 1, 1])
@@ -399,41 +413,42 @@ def plot_grouped_data_with_optional_trend(df: pd.DataFrame,
 
     plt.show()
 
-# if __name__ == "__main__":
-#     path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
-#
-#     # Find the first file that starts with 'OD2.1' and ends with .xlsx
-#     matches = list(path.glob('ODQ2.1*.xlsx'))
-#     if not matches:
-#         raise FileNotFoundError("No .xlsx files starting with 'OD2.1' found in the folder.")
-#
-#     # If there may be multiple, pick the most recently modified:
-#     file_to_read = max(matches, key=lambda p: p.stat().st_mtime)
-#
-#     df = pd.read_excel(file_to_read)
-#     cols = ['Cell type', 'Condition', 'Timepoint', 'Timepoint_datetime', 'Vessels Area Normalize']
-#     df_plot = df[cols]
-#
-#     sns.set(style="whitegrid")
-#
-#     group_a = 'Cell type'
-#     group_b = 'Condition'
-#     x_axis = 'Timepoint_datetime'
-#     y_axis = 'Vessels Area Normalize'
-#
-#
-#     # # Call the function with your desired columns
-#     plot_grouped_data_with_optional_trend(
-#         df=df_plot,
-#         cat_col1=group_b,       # Plots separate graphs for Condition
-#         cat_col2=group_a,       # Plots separate colors for Cell Type
-#         y_col=y_axis,
-#         x_col=x_axis,
-#         add_trend_line=True,
-#         font_scale=1.2,         # <--- Change this float to resize fonts (e.g. 0.8 or 1.5)
-#         title="Vessel Area Over Time",
-#         save_path=None
-#     )
-#
-#
+if __name__ == "__main__":
+    path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
+
+    # Find the first file that starts with 'OD2.1' and ends with .xlsx
+    matches = list(path.glob('*.xlsx'))
+    # if not matches:
+    #     raise FileNotFoundError("No .xlsx files starting with 'OD2.1' found in the folder.")
+
+    # If there may be multiple, pick the most recently modified:
+    # file_to_read = max(matches, key=lambda p: p.stat().st_mtime)
+
+    for file_to_read in matches:
+        df = pd.read_excel(file_to_read)
+        cols = ['Cell type', 'Condition', 'Timepoint', 'Timepoint_datetime', 'Vessels Area Normalize']
+        df_plot = df[cols]
+
+        sns.set(style="whitegrid")
+
+        group_a = 'Cell type'
+        group_b = 'Condition'
+        x_axis = 'Timepoint_datetime'
+        y_axis = 'Vessels Area Normalize'
+
+        file_name = str(file_to_read.stem).partition(' ')[0]
+        # # Call the function with your desired columns
+        plot_grouped_data_with_optional_trend(
+            df=df_plot,
+            cat_col1=group_b,       # Plots separate graphs for Condition
+            cat_col2=group_a,       # Plots separate colors for Cell Type
+            y_col=y_axis,
+            x_col=x_axis,
+            add_trend_line=True,
+            font_scale=1.2,         # <--- Change this float to resize fonts (e.g. 0.8 or 1.5)
+            title=f"{file_name} Vessel Area Over Time",
+            save_path=None
+        )
+
+
 
