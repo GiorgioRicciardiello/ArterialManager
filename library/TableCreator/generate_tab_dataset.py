@@ -628,11 +628,11 @@ class GenerateDataset:
 
 
 if __name__ == "__main__":
-    # generator = GenerateDataset(path_tables=CONFIG.get('paths')['path_tables'],
-    #                             output_path=CONFIG.get('paths')['outputs_tabs'])
+    generator = GenerateDataset(path_tables=CONFIG.get('paths')['path_tables'],
+                                output_path=CONFIG.get('paths')['outputs_tabs'])
 
-    generator = GenerateDataset(path_tables=CONFIG.get('paths')['data'].joinpath('sample_tab'),
-                                output_path=CONFIG.get('paths')['data'].joinpath('sample_tab_output'))
+    # generator = GenerateDataset(path_tables=CONFIG.get('paths')['data'].joinpath('sample_tab'),
+    #                             output_path=CONFIG.get('paths')['data'].joinpath('sample_tab_output'))
 
 
     df = generator.run()

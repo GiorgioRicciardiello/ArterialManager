@@ -43,7 +43,8 @@ CONFIG = {
         "param": {}
     },
 
-
+    'conda_prompt' : r"C:\Users\riccig01\anaconda3\Scripts\activate.bat",
+    'env_name' :"imgai_env",
 }
 
 

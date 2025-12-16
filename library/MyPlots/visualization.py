@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 import plotly.colors as pcolors
-
+from config.config import CONFIG
 
 
 def prettify_label(label: str) -> str:
@@ -414,8 +414,8 @@ def plot_grouped_data_with_optional_trend(df: pd.DataFrame,
     plt.show()
 
 if __name__ == "__main__":
-    path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
-
+    # path = Path(r'C:\Users\riccig01\OneDrive\Projects\MtSinai\Fanny\ArterialManager\data\sample_tab_output')
+    path = CONFIG.get('paths')['outputs_tabs']
     # Find the first file that starts with 'OD2.1' and ends with .xlsx
     matches = list(path.glob('*.xlsx'))
     # if not matches:
@@ -447,7 +447,7 @@ if __name__ == "__main__":
             add_trend_line=True,
             font_scale=1.2,         # <--- Change this float to resize fonts (e.g. 0.8 or 1.5)
             title=f"{file_name} Vessel Area Over Time",
-            save_path=None
+            save_path=CONFIG.get('paths')['results'].joinpath('plot_experiments', f"{file_name}_vessel_area.png")
         )
 
 
